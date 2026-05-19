@@ -1,0 +1,47 @@
+<div class="dashboard-container">
+  <h1>Welcome, {{ user?.firstName }} {{ user?.lastName }}!</h1>
+
+  <div class="stats-grid">
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <mat-icon color="primary">account_balance</mat-icon>
+        <h2>Total Balance</h2>
+        <p class="stat-value">$0.00</p>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <mat-icon color="accent">credit_card</mat-icon>
+        <h2>Active Accounts</h2>
+        <p class="stat-value">0</p>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="stat-card">
+      <mat-card-content>
+        <mat-icon color="warn">trending_up</mat-icon>
+        <h2>Total Transactions</h2>
+        <p class="stat-value">0</p>
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <div class="action-section">
+    <h2>Quick Actions</h2>
+    <div class="actions-grid">
+      <button mat-raised-button color="primary" routerLink="/accounts">
+        <mat-icon>account_balance_wallet</mat-icon>
+        View Accounts
+      </button>
+      <button mat-raised-button color="accent">
+        <mat-icon>send</mat-icon>
+        Transfer Money
+      </button>
+      <button mat-raised-button>
+        <mat-icon>receipt</mat-icon>
+        Pay Bills
+      </button>
+    </div>
+  </div>
+</div>
