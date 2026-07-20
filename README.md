@@ -327,7 +327,7 @@ npm run build
 
 ## License
 
-MIT
+Proprietary - All rights reserved.
 
 ## Author
 
