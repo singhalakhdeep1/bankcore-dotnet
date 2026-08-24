@@ -6,6 +6,27 @@ public class CreateAccountRequest
     public string? Currency { get; set; }
 }
 
+public class DepositRequest
+{
+    public decimal Amount { get; set; }
+    public string? Description { get; set; }
+}
+
+public class WithdrawRequest
+{
+    public decimal Amount { get; set; }
+    public string? Description { get; set; }
+}
+
+public class TransferRequest
+{
+    public Guid FromAccountId { get; set; }
+    public Guid ToAccountId { get; set; }
+    public decimal Amount { get; set; }
+    public string? Description { get; set; }
+    public string? IdempotencyKey { get; set; }
+}
+
 public class AccountDto
 {
     public Guid Id { get; set; }

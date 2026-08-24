@@ -79,6 +79,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IInterestService, InterestService>();
 
 // HLD/LLD Pattern Services
 builder.Services.AddSingleton<SagaManager>();
