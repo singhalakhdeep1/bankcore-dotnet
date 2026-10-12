@@ -33,6 +33,10 @@ public class Account
     /// <summary>PostgreSQL xmin system column, used for optimistic concurrency on balance updates.</summary>
     public uint Version { get; set; }
 
+    /// <summary>Soft delete: closed accounts are hidden but their ledger history is kept.</summary>
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+
     // Navigation properties
     public User User { get; set; } = null!;
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();

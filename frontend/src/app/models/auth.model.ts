@@ -7,6 +7,12 @@ export interface User {
     role: string;
     kycStatus: string;
     isActive: boolean;
+    twoFactorEnabled?: boolean;
+    address?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postalCode?: string;
     createdAt: string;
 }
 
@@ -20,6 +26,7 @@ export interface AuthResponse {
 export interface LoginRequest {
     email: string;
     password: string;
+    totpCode?: string;
 }
 
 export interface RegisterRequest {

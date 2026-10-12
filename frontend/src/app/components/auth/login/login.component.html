@@ -47,6 +47,13 @@
           </mat-error>
         </mat-form-field>
 
+        <mat-form-field appearance="outline" class="full-width" *ngIf="requiresTwoFactor">
+          <mat-label>Authenticator code</mat-label>
+          <input matInput formControlName="totpCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+          <mat-icon matPrefix>shield</mat-icon>
+          <mat-hint>6 digits from your authenticator app</mat-hint>
+        </mat-form-field>
+
         <button
           mat-raised-button
           color="primary"

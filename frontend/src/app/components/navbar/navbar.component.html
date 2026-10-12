@@ -12,6 +12,21 @@
     Accounts
   </button>
 
+  <button mat-button routerLink="/payment-methods">
+    <mat-icon>credit_card</mat-icon>
+    Cards
+  </button>
+
+  <button mat-button routerLink="/recurring">
+    <mat-icon>event_repeat</mat-icon>
+    Recurring
+  </button>
+
+  <button mat-button routerLink="/admin" *ngIf="isStaff">
+    <mat-icon>admin_panel_settings</mat-icon>
+    Back office
+  </button>
+
   <button mat-icon-button [matMenuTriggerFor]="menu">
     <mat-icon>account_circle</mat-icon>
   </button>
@@ -20,6 +35,10 @@
     <button mat-menu-item disabled>
       <mat-icon>person</mat-icon>
       <span>{{ authService.currentUserValue?.email }}</span>
+    </button>
+    <button mat-menu-item routerLink="/profile">
+      <mat-icon>manage_accounts</mat-icon>
+      <span>Profile &amp; security</span>
     </button>
     <button mat-menu-item (click)="logout()">
       <mat-icon>logout</mat-icon>

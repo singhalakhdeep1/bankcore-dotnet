@@ -15,6 +15,20 @@ public class PaymentLog
     public Guid? LedgerTransactionId { get; set; }
 
     public string? GatewayTransactionId { get; set; }
+
+    /// <summary>MerchantPayment debits the account to pay a merchant; CardTopUp credits it by charging a card.</summary>
+    public string Kind { get; set; } = "MerchantPayment";
+
+    /// <summary>Gateway used for a card top-up (Stripe or PayPal); null for merchant payments.</summary>
+    public string? Provider { get; set; }
+
+    /// <summary>live or simulated: whether the gateway call really reached Stripe/PayPal.</summary>
+    public string? ProviderMode { get; set; }
+
+    public Guid? PaymentMethodId { get; set; }
+
+    /// <summary>Processing cost charged by the gateway.</summary>
+    public decimal Fee { get; set; }
     public decimal Amount { get; set; }
     public string Currency { get; set; } = "USD";
     public string MerchantName { get; set; } = string.Empty;

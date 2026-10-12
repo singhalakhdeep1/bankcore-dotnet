@@ -28,6 +28,7 @@ import { AccountsComponent } from './components/accounts/accounts.component';
 import { AccountDetailComponent } from './components/account-detail/account-detail.component';
 import { NavbarComponent } from './components/navbar/navbar.component';
 import { AuthInterceptor } from './interceptors/auth.interceptor';
+import { BankTransferPanelComponent, PaymentHistoryPanelComponent, TopUpPanelComponent } from './components/account-detail/account-panels';
 
 @NgModule({
     declarations: [
@@ -57,7 +58,10 @@ import { AuthInterceptor } from './interceptors/auth.interceptor';
         MatMenuModule,
         MatSelectModule,
         MatTabsModule,
-        MatPaginatorModule
+        MatPaginatorModule,
+        TopUpPanelComponent,
+        BankTransferPanelComponent,
+        PaymentHistoryPanelComponent
     ],
     providers: [
         {

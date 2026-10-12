@@ -1,5 +1,9 @@
 # BankCore full stack: PostgreSQL + Redis + .NET API + Angular (nginx).
-# Copy .env.example to .env and set the secrets before running `docker compose up --build`.
+# Copy .env.example to .env and set the secrets, then:  docker compose up --build
+#
+# Optional database integrations (MongoDB audit mirror, MySQL / SQL Server report mirrors, RavenDB KYC metadata):
+#   1. set the matching *_URL values in .env
+#   2. docker compose --profile integrations up --build
 
 services:
   postgres:
@@ -43,6 +47,23 @@ services:
       Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env (at least 32 characters)}
       # Only needed when a browser calls the API directly (e.g. `ng serve` on :4200); behind nginx it is same-origin.
       Cors__AllowedOrigins__0: http://localhost:4200
+      # First administrator, created on startup when both are set.
+      Seed__AdminEmail: ${ADMIN_EMAIL:-}
+      Seed__AdminPassword: ${ADMIN_PASSWORD:-}
+      # Payment gateways: leave empty for the simulated gateway, or set real keys for live Stripe / PayPal.
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY:-}
+      Stripe__PublishableKey: ${STRIPE_PUBLISHABLE_KEY:-}
+      PayPal__ClientId: ${PAYPAL_CLIENT_ID:-}
+      PayPal__ClientSecret: ${PAYPAL_CLIENT_SECRET:-}
+      PayPal__Mode: ${PAYPAL_MODE:-sandbox}
+      # Optional database integrations (empty = off).
+      ConnectionStrings__MongoDB: ${MONGODB_URL:-}
+      ConnectionStrings__MySQL: ${MYSQL_URL:-}
+      ConnectionStrings__SQLServer: ${SQLSERVER_URL:-}
+      RavenDB__Urls__0: ${RAVENDB_URL:-}
+      Storage__KycPath: /data/kyc
+    volumes:
+      - kyc_data:/data/kyc
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,6 +79,55 @@ services:
     depends_on:
       - api
 
+  # ---- optional integrations (profile "integrations") -------------------------------------------
+
+  mongo:
+    image: mongo:7
+    profiles: ["integrations"]
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "127.0.0.1:27017:27017"
+
+  mysql:
+    image: mysql:8
+    profiles: ["integrations"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me-mysql}
+      MYSQL_DATABASE: bankcore
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:3306:3306"
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles: ["integrations"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SQLSERVER_SA_PASSWORD:-Change-me-1234}
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    ports:
+      - "127.0.0.1:1433:1433"
+
+  ravendb:
+    image: ravendb/ravendb:latest
+    profiles: ["integrations"]
+    environment:
+      RAVEN_Setup_Mode: None
+      RAVEN_License_Eula_Accepted: "true"
+      RAVEN_Security_UnsecuredAccessAllowed: PrivateNetwork
+    volumes:
+      - ravendb_data:/opt/RavenDB/Server/RavenData
+    ports:
+      - "127.0.0.1:8080:8080"
+
 volumes:
   postgres_data:
   redis_data:
+  kyc_data:
+  mongo_data:
+  mysql_data:
+  sqlserver_data:
+  ravendb_data:

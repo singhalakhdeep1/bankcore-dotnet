@@ -88,6 +88,14 @@
           </form>
         </mat-tab>
 
+        <mat-tab label="Top up by card">
+          <app-top-up-panel [account]="account" (changed)="refreshAll()"></app-top-up-panel>
+        </mat-tab>
+
+        <mat-tab label="Bank transfer">
+          <app-bank-transfer-panel [account]="account" (changed)="refreshAll()"></app-bank-transfer-panel>
+        </mat-tab>
+
         <mat-tab label="Pay merchant">
           <form [formGroup]="payForm" (ngSubmit)="pay()" class="action-form">
             <mat-form-field appearance="outline">
@@ -110,6 +118,13 @@
         </mat-tab>
       </mat-tab-group>
       <p class="muted note" *ngIf="!canTransact">This account is {{ account.status | lowercase }}, so money movements are disabled.</p>
+    </mat-card>
+
+    <mat-card>
+      <mat-card-header><mat-card-title>Payments</mat-card-title></mat-card-header>
+      <mat-card-content>
+        <app-payment-history-panel [account]="account" (changed)="refreshAll()"></app-payment-history-panel>
+      </mat-card-content>
     </mat-card>
 
     <mat-card>

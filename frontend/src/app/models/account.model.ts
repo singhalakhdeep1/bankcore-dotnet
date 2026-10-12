@@ -80,6 +80,8 @@ export interface PaymentRequest {
 export interface PaymentResult {
     success: boolean;
     transactionId: string;
+    provider?: string;
+    mode?: string;
     status?: string;
     amount: number;
     currency: string;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using BankingAPI.Data;
 
@@ -11,7 +12,7 @@ namespace BankCore.Services.Saga
     /// </summary>
     public class SagaManager
     {
-        private readonly Dictionary<string, SagaExecution> _executions = new();
+        private readonly ConcurrentDictionary<string, SagaExecution> _executions = new();
         private readonly ILogger<SagaManager> _logger;
 
         public SagaManager(ILogger<SagaManager> logger)
@@ -51,8 +52,7 @@ namespace BankCore.Services.Saga
 
                     try
                     {
-                        var result = await step.Execute(context);
-                        context = result;
+                        context = await ExecuteStepWithRetryAsync(step, context);
                         execution.CompletedSteps.Add(step.Name);
                         
                         _logger.LogInformation($"Step completed: {step.Name}");
@@ -82,10 +82,35 @@ namespace BankCore.Services.Saga
             finally
             {
                 // Clean up old executions
-                if (_executions.Count > 100)
+                // Keep only the most recent executions (ids start with a sortable timestamp).
+                while (_executions.Count > 100)
                 {
-                    var oldestKey = _executions.Keys.First();
-                    _executions.Remove(oldestKey);
+                    var oldestKey = _executions.Keys.OrderBy(k => k, StringComparer.Ordinal).First();
+                    _executions.TryRemove(oldestKey, out _);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Runs a step, retrying transient failures with exponential backoff when the step is marked retryable.
+        /// A <see cref="SagaAbortException"/> is a deliberate business refusal and is never retried.
+        /// </summary>
+        private async Task<T> ExecuteStepWithRetryAsync<T>(SagaStep<T> step, T context)
+        {
+            var attempts = step.Retryable ? Math.Max(1, step.MaxRetries) : 1;
+
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return await step.Execute(context);
+                }
+                catch (Exception ex) when (ex is not SagaAbortException && attempt < attempts)
+                {
+                    var delay = TimeSpan.FromMilliseconds(200 * Math.Pow(2, attempt - 1));
+                    _logger.LogWarning(ex, "Saga step {Step} failed (attempt {Attempt}/{Max}); retrying in {Delay}ms",
+                        step.Name, attempt, attempts, delay.TotalMilliseconds);
+                    await Task.Delay(delay);
                 }
             }
         }
@@ -166,6 +191,14 @@ namespace BankCore.Services.Saga
         public T Context { get; set; } = default!;
         public List<string> CompletedSteps { get; set; } = new();
         public List<string> FailedSteps { get; set; } = new();
+    }
+
+    /// <summary>Thrown by a saga step to refuse the workflow for a business reason (no retry, compensation still runs).</summary>
+    public class SagaAbortException : Exception
+    {
+        public SagaAbortException(string message) : base(message)
+        {
+        }
     }
 
     public enum SagaStatus

@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { BehaviorSubject, Observable, catchError, finalize, of, tap } from 'rxjs';
 import { AuthResponse, LoginRequest, RegisterRequest, User } from '../models/auth.model';
 import { environment } from '../../environments/environment';
 
@@ -35,6 +35,16 @@ export class AuthService {
     refresh(): Observable<AuthResponse> {
         return this.http.post<AuthResponse>(`${this.apiUrl}/refresh`, { refreshToken: this.getRefreshToken() })
             .pipe(tap(response => this.storeSession(response)));
+    }
+
+    /** Tells the API to revoke the tokens (best effort), then clears the local session either way. */
+    logoutRemote(): Observable<unknown> {
+        return this.http.post(`${this.apiUrl}/logout`, { refreshToken: this.getRefreshToken() }, {
+            headers: { Authorization: `Bearer ${this.getToken() ?? ''}` }
+        }).pipe(
+            catchError(() => of(null)),
+            finalize(() => this.logout())
+        );
     }
 
     logout(): void {

@@ -13,8 +13,12 @@ export class NavbarComponent {
         private router: Router
     ) { }
 
+    get isStaff(): boolean {
+        return ['Staff', 'Manager', 'Admin'].includes(this.authService.currentUserValue?.role ?? '');
+    }
+
     logout(): void {
-        this.authService.logout();
-        this.router.navigate(['/login']);
+        // Revoke the tokens on the server too, then clear them locally.
+        this.authService.logoutRemote().subscribe(() => this.router.navigate(['/login']));
     }
 }

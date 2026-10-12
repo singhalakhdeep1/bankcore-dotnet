@@ -164,6 +164,16 @@ public class AccountsController : ControllerBase
         }
     }
 
+    /// <summary>Closes an account (soft delete). The balance must be zero.</summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Close(Guid id)
+    {
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+
+        var error = await _accountService.CloseAccountAsync(id, userId);
+        return error == null ? NoContent() : BadRequest(new { message = error });
+    }
+
     [HttpPost("transfer")]
     public async Task<IActionResult> Transfer([FromBody] TransferRequest request)
     {

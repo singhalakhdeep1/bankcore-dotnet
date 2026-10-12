@@ -9,7 +9,13 @@ public enum TransactionType
     Refund,
     Interest,
     Fee,
-    Reversal
+    Reversal,
+
+    /// <summary>Outgoing ACH, wire or SWIFT transfer to another bank.</summary>
+    ExternalTransfer,
+
+    /// <summary>Money added to the account by charging a card through a payment gateway.</summary>
+    CardTopUp
 }
 
 public enum TransactionStatus
@@ -36,6 +42,12 @@ public class Transaction
     public string? FromAccountNumber { get; set; }
     public bool IsFraudulent { get; set; } = false;
     public string? IpAddress { get; set; }
+
+    /// <summary>The general-ledger account that balances this posting (cash, a clearing account, ...).</summary>
+    public GlAccount? GlCounter { get; set; }
+
+    /// <summary>Set on reversal transactions: the transaction that was reversed.</summary>
+    public Guid? ReversesTransactionId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

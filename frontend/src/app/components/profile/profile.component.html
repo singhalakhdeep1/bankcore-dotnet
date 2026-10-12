@@ -1,0 +1,112 @@
+<div class="page">
+  <h1>My profile</h1>
+
+  <mat-card *ngIf="user">
+    <mat-card-header>
+      <mat-card-title>Personal details</mat-card-title>
+      <mat-card-subtitle>{{ user.email }} · {{ user.role }}</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="profileForm" (ngSubmit)="saveProfile()" class="grid">
+        <mat-form-field appearance="outline"><mat-label>First name</mat-label><input matInput formControlName="firstName" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Last name</mat-label><input matInput formControlName="lastName" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Phone</mat-label><input matInput formControlName="phone" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Address</mat-label><input matInput formControlName="address" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>City</mat-label><input matInput formControlName="city" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>State</mat-label><input matInput formControlName="state" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Country</mat-label><input matInput formControlName="country" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Postal code</mat-label><input matInput formControlName="postalCode" /></mat-form-field>
+        <div class="actions"><button mat-raised-button color="primary" type="submit" [disabled]="profileForm.invalid || busy">Save</button></div>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card>
+    <mat-card-header>
+      <mat-card-title>Identity verification (KYC)</mat-card-title>
+      <mat-card-subtitle>
+        Status: <span class="badge" [class.good]="kycStatus === 'Verified'" [class.bad]="kycStatus === 'Rejected'">{{ kycStatus }}</span>
+      </mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <p class="muted">
+        Upload an identity document (passport, national ID or driving licence) and a proof of address. Verified customers
+        can send up to 10,000 a day; until then the limit is 2,500. PDF, JPEG or PNG, up to 5 MB.
+      </p>
+      <form [formGroup]="kycForm" (ngSubmit)="uploadDocument()" class="row">
+        <mat-form-field appearance="outline">
+          <mat-label>Document type</mat-label>
+          <mat-select formControlName="documentType">
+            <mat-option *ngFor="let t of documentTypes" [value]="t">{{ t }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" (change)="onFile($event)" />
+        <button mat-raised-button color="primary" type="submit" [disabled]="!selectedFile || busy">Upload</button>
+      </form>
+
+      <table mat-table [dataSource]="documents" *ngIf="documents.length > 0" class="full">
+        <ng-container matColumnDef="documentType"><th mat-header-cell *matHeaderCellDef>Type</th><td mat-cell *matCellDef="let d">{{ d.documentType }}</td></ng-container>
+        <ng-container matColumnDef="fileName"><th mat-header-cell *matHeaderCellDef>File</th><td mat-cell *matCellDef="let d">{{ d.fileName }}</td></ng-container>
+        <ng-container matColumnDef="status"><th mat-header-cell *matHeaderCellDef>Status</th>
+          <td mat-cell *matCellDef="let d"><span class="badge" [class.good]="d.status === 'Approved'" [class.bad]="d.status === 'Rejected'">{{ d.status }}</span>
+            <span class="muted" *ngIf="d.reviewNotes"> {{ d.reviewNotes }}</span></td></ng-container>
+        <ng-container matColumnDef="uploadedAt"><th mat-header-cell *matHeaderCellDef>Uploaded</th><td mat-cell *matCellDef="let d">{{ d.uploadedAt | date: 'short' }}</td></ng-container>
+        <tr mat-header-row *matHeaderRowDef="['documentType','fileName','status','uploadedAt']"></tr>
+        <tr mat-row *matRowDef="let row; columns: ['documentType','fileName','status','uploadedAt']"></tr>
+      </table>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card>
+    <mat-card-header><mat-card-title>Password</mat-card-title></mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="passwordForm" (ngSubmit)="changePassword()" class="row">
+        <mat-form-field appearance="outline"><mat-label>Current password</mat-label><input matInput type="password" formControlName="currentPassword" autocomplete="current-password" /></mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>New password</mat-label>
+          <input matInput type="password" formControlName="newPassword" autocomplete="new-password" />
+          <mat-hint>10+ characters with upper and lower case, a digit and a symbol</mat-hint>
+        </mat-form-field>
+        <button mat-raised-button color="primary" type="submit" [disabled]="passwordForm.invalid || busy">Change password</button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card *ngIf="user">
+    <mat-card-header>
+      <mat-card-title>Two-factor authentication</mat-card-title>
+      <mat-card-subtitle>{{ user.twoFactorEnabled ? 'On' : 'Off' }}</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <ng-container *ngIf="!user.twoFactorEnabled">
+        <button mat-stroked-button *ngIf="!setup" (click)="startTwoFactor()" [disabled]="busy">Set up an authenticator app</button>
+        <div *ngIf="setup" class="setup">
+          <p>Add this secret to Google Authenticator, Authy or a similar app, then enter the 6-digit code it shows.</p>
+          <code>{{ setup.secret }}</code>
+          <p class="muted">Or import this link: <code class="wrap">{{ setup.otpAuthUri }}</code></p>
+          <form [formGroup]="twoFactorForm" (ngSubmit)="enableTwoFactor()" class="row">
+            <mat-form-field appearance="outline"><mat-label>Code</mat-label><input matInput formControlName="code" maxlength="6" inputmode="numeric" /></mat-form-field>
+            <button mat-raised-button color="primary" type="submit" [disabled]="twoFactorForm.invalid || busy">Turn on</button>
+          </form>
+        </div>
+      </ng-container>
+
+      <form *ngIf="user.twoFactorEnabled" [formGroup]="disableForm" (ngSubmit)="disableTwoFactor()" class="row">
+        <mat-form-field appearance="outline"><mat-label>Password</mat-label><input matInput type="password" formControlName="password" /></mat-form-field>
+        <mat-form-field appearance="outline"><mat-label>Code</mat-label><input matInput formControlName="code" maxlength="6" inputmode="numeric" /></mat-form-field>
+        <button mat-stroked-button color="warn" type="submit" [disabled]="disableForm.invalid || busy">Turn off</button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+
+  <mat-card class="danger">
+    <mat-card-header><mat-card-title>Close my profile</mat-card-title></mat-card-header>
+    <mat-card-content>
+      <p class="muted">Closing hides your profile and accounts; the transaction history is kept for the bank's records. Every account must have a zero balance.</p>
+      <form [formGroup]="closeForm" (ngSubmit)="closeProfile()" class="row">
+        <mat-form-field appearance="outline"><mat-label>Confirm with your password</mat-label><input matInput type="password" formControlName="password" /></mat-form-field>
+        <button mat-stroked-button color="warn" type="submit" [disabled]="closeForm.invalid || busy">Close profile</button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+</div>

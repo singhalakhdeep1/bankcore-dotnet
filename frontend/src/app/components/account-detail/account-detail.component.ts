@@ -160,6 +160,11 @@ export class AccountDetailComponent implements OnInit {
         });
     }
 
+    /** Called by the child panels (top-up, bank transfer, refunds) after they move money. */
+    refreshAll(): void {
+        this.refresh();
+    }
+
     /** Reload balance, history and the ledger check after any money movement. */
     private refresh(): void {
         if (!this.account) { return; }

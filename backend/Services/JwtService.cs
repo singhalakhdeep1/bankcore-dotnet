@@ -5,14 +5,16 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace BankingAPI.Services;
 
+public record RefreshTokenInfo(Guid UserId, string Jti, DateTime ExpiresUtc);
+
 public interface IJwtService
 {
     string GenerateAccessToken(Guid userId, string email, string role);
     string GenerateRefreshToken(Guid userId);
     ClaimsPrincipal? ValidateToken(string token);
 
-    /// <summary>Returns the user id if <paramref name="token"/> is a valid, unexpired refresh token; otherwise null.</summary>
-    Guid? ValidateRefreshToken(string token);
+    /// <summary>Returns the token details if <paramref name="token"/> is a valid, unexpired refresh token; otherwise null.</summary>
+    RefreshTokenInfo? ValidateRefreshToken(string token);
 }
 
 public class JwtService : IJwtService
@@ -29,7 +31,7 @@ public class JwtService : IJwtService
         var secret = _configuration["Jwt:Secret"] ?? throw new InvalidOperationException("JWT Secret not configured");
         var issuer = _configuration["Jwt:Issuer"];
         var audience = _configuration["Jwt:Audience"];
-        var expiryMinutes = int.Parse(_configuration["Jwt:ExpiryMinutes"] ?? "1440");
+        var expiryMinutes = int.Parse(_configuration["Jwt:ExpiryMinutes"] ?? "15");
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -64,6 +66,7 @@ public class JwtService : IJwtService
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim("token_type", "refresh")
         };
 
@@ -76,24 +79,31 @@ public class JwtService : IJwtService
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    public Guid? ValidateRefreshToken(string token)
+    public RefreshTokenInfo? ValidateRefreshToken(string token)
     {
         var principal = ValidateToken(token);
         if (principal == null) return null;
 
         // Access tokens are signed with the same key, so insist on the refresh marker.
-        var tokenType = principal.FindFirst("token_type")?.Value;
-        if (tokenType != "refresh") return null;
+        if (principal.FindFirst("token_type")?.Value != "refresh") return null;
 
         var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
                   ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out var userId) ? userId : null;
+        var jti = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+        var exp = principal.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
+
+        if (!Guid.TryParse(sub, out var userId) || string.IsNullOrEmpty(jti) || !long.TryParse(exp, out var expSeconds))
+        {
+            return null;
+        }
+
+        return new RefreshTokenInfo(userId, jti, DateTimeOffset.FromUnixTimeSeconds(expSeconds).UtcDateTime);
     }
 
     public ClaimsPrincipal? ValidateToken(string token)
     {
         var secret = _configuration["Jwt:Secret"] ?? throw new InvalidOperationException("JWT Secret not configured");
-        var tokenHandler = new JwtSecurityTokenHandler();
+        var tokenHandler = new JwtSecurityTokenHandler { MapInboundClaims = false };
 
         try
         {

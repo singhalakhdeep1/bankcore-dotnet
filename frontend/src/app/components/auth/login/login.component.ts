@@ -13,6 +13,7 @@ export class LoginComponent implements OnInit {
     loginForm: FormGroup;
     loading = false;
     hidePassword = true;
+    requiresTwoFactor = false;
     returnUrl: string = '/dashboard';
 
     constructor(
@@ -24,7 +25,8 @@ export class LoginComponent implements OnInit {
     ) {
         this.loginForm = this.formBuilder.group({
             email: ['', [Validators.required, Validators.email]],
-            password: ['', Validators.required]
+            password: ['', Validators.required],
+            totpCode: ['']
         });
     }
 
@@ -41,15 +43,28 @@ export class LoginComponent implements OnInit {
         }
 
         this.loading = true;
-        this.authService.login(this.loginForm.value).subscribe({
+        this.authService.login({
+            email: this.loginForm.value.email,
+            password: this.loginForm.value.password,
+            totpCode: this.requiresTwoFactor ? this.loginForm.value.totpCode : undefined
+        }).subscribe({
             next: () => {
                 this.router.navigate([this.returnUrl]);
             },
             error: (error) => {
                 this.loading = false;
-                this.snackBar.open(error.error?.message || 'Login failed', 'Close', {
-                    duration: 3000
-                });
+
+                // The password was right but this account has two-factor on: ask for the authenticator code.
+                if (error.status === 401 && error.error?.requiresTwoFactor) {
+                    this.requiresTwoFactor = true;
+                    this.loginForm.get('totpCode')?.setValidators([Validators.required, Validators.pattern(/^\d{6}$/)]);
+                    this.loginForm.get('totpCode')?.updateValueAndValidity();
+                }
+
+                const message = error.status === 423
+                    ? error.error?.message || 'This account is locked.'
+                    : error.error?.message || 'Login failed';
+                this.snackBar.open(message, 'Close', { duration: 5000 });
             }
         });
     }
