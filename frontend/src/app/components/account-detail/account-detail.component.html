@@ -1,0 +1,162 @@
+<div class="detail-container">
+  <a mat-button routerLink="/accounts"><mat-icon>arrow_back</mat-icon> All accounts</a>
+
+  <mat-spinner *ngIf="loading" diameter="40"></mat-spinner>
+
+  <mat-card *ngIf="notFound">
+    <mat-card-content>Account not found.</mat-card-content>
+  </mat-card>
+
+  <ng-container *ngIf="account">
+    <mat-card class="summary">
+      <mat-card-content>
+        <div>
+          <div class="muted">{{ account.accountType }} account · {{ account.accountNumber }}</div>
+          <div class="balance">{{ account.balance | currency: account.currency }}</div>
+          <div class="muted" *ngIf="account.interestRate > 0">
+            Interest {{ account.interestRate * 100 | number: '1.0-2' }}% a year, credited daily
+          </div>
+        </div>
+        <div class="badges">
+          <span class="status-badge" [class.active]="account.status === 'Active'">{{ account.status }}</span>
+          <span
+            *ngIf="reconciled !== null"
+            class="status-badge"
+            [class.active]="reconciled"
+            [title]="reconciled ? 'The stored balance matches the ledger' : 'The stored balance does not match the ledger'"
+          >
+            {{ reconciled ? 'Ledger reconciled' : 'Ledger mismatch' }}
+          </span>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card class="actions">
+      <mat-tab-group>
+        <mat-tab label="Deposit">
+          <form [formGroup]="depositForm" (ngSubmit)="deposit()" class="action-form">
+            <mat-form-field appearance="outline">
+              <mat-label>Amount</mat-label>
+              <input matInput type="number" step="0.01" formControlName="amount" />
+              <mat-error>Enter an amount with at most 2 decimals</mat-error>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Note (optional)</mat-label>
+              <input matInput formControlName="description" maxlength="200" />
+            </mat-form-field>
+            <button mat-raised-button color="primary" type="submit" [disabled]="depositForm.invalid || !canTransact || busy !== null">
+              Deposit
+            </button>
+          </form>
+        </mat-tab>
+
+        <mat-tab label="Withdraw">
+          <form [formGroup]="withdrawForm" (ngSubmit)="withdraw()" class="action-form">
+            <mat-form-field appearance="outline">
+              <mat-label>Amount</mat-label>
+              <input matInput type="number" step="0.01" formControlName="amount" />
+              <mat-error>Enter an amount with at most 2 decimals</mat-error>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Note (optional)</mat-label>
+              <input matInput formControlName="description" maxlength="200" />
+            </mat-form-field>
+            <button mat-raised-button color="primary" type="submit" [disabled]="withdrawForm.invalid || !canTransact || busy !== null">
+              Withdraw
+            </button>
+          </form>
+        </mat-tab>
+
+        <mat-tab label="Transfer">
+          <form [formGroup]="transferForm" (ngSubmit)="transfer()" class="action-form">
+            <mat-form-field appearance="outline">
+              <mat-label>To account number</mat-label>
+              <input matInput formControlName="toAccountNumber" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Amount</mat-label>
+              <input matInput type="number" step="0.01" formControlName="amount" />
+              <mat-error>Enter an amount with at most 2 decimals</mat-error>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Note (optional)</mat-label>
+              <input matInput formControlName="description" maxlength="200" />
+            </mat-form-field>
+            <button mat-raised-button color="primary" type="submit" [disabled]="transferForm.invalid || !canTransact || busy !== null">
+              Send
+            </button>
+          </form>
+        </mat-tab>
+
+        <mat-tab label="Pay merchant">
+          <form [formGroup]="payForm" (ngSubmit)="pay()" class="action-form">
+            <mat-form-field appearance="outline">
+              <mat-label>Merchant</mat-label>
+              <input matInput formControlName="merchantName" maxlength="200" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Amount</mat-label>
+              <input matInput type="number" step="0.01" formControlName="amount" />
+              <mat-error>Enter an amount with at most 2 decimals</mat-error>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Note (optional)</mat-label>
+              <input matInput formControlName="description" maxlength="200" />
+            </mat-form-field>
+            <button mat-raised-button color="primary" type="submit" [disabled]="payForm.invalid || !canTransact || busy !== null">
+              Pay
+            </button>
+          </form>
+        </mat-tab>
+      </mat-tab-group>
+      <p class="muted note" *ngIf="!canTransact">This account is {{ account.status | lowercase }}, so money movements are disabled.</p>
+    </mat-card>
+
+    <mat-card>
+      <mat-card-header><mat-card-title>Transactions</mat-card-title></mat-card-header>
+      <mat-card-content>
+        <p *ngIf="transactions.length === 0" class="muted">No transactions yet.</p>
+
+        <table mat-table [dataSource]="transactions" class="tx-table" *ngIf="transactions.length > 0">
+          <ng-container matColumnDef="createdAt">
+            <th mat-header-cell *matHeaderCellDef>Date</th>
+            <td mat-cell *matCellDef="let t">{{ t.createdAt | date: 'short' }}</td>
+          </ng-container>
+          <ng-container matColumnDef="type">
+            <th mat-header-cell *matHeaderCellDef>Type</th>
+            <td mat-cell *matCellDef="let t">{{ t.type }}</td>
+          </ng-container>
+          <ng-container matColumnDef="description">
+            <th mat-header-cell *matHeaderCellDef>Description</th>
+            <td mat-cell *matCellDef="let t">
+              {{ t.description }}
+              <span class="status-badge" *ngIf="t.status !== 'Completed'">{{ t.status }}</span>
+            </td>
+          </ng-container>
+          <ng-container matColumnDef="amount">
+            <th mat-header-cell *matHeaderCellDef>Amount</th>
+            <td mat-cell *matCellDef="let t" [class.credit]="t.amount > 0" [class.debit]="t.amount < 0">
+              {{ t.amount | currency: t.currency }}
+            </td>
+          </ng-container>
+          <ng-container matColumnDef="balanceAfter">
+            <th mat-header-cell *matHeaderCellDef>Balance</th>
+            <td mat-cell *matCellDef="let t">{{ t.balanceAfter | currency: t.currency }}</td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+        </table>
+
+        <mat-paginator
+          [length]="totalCount"
+          [pageSize]="pageSize"
+          [pageIndex]="page - 1"
+          [pageSizeOptions]="[10, 25, 50]"
+          (page)="onPage($event)"
+          *ngIf="totalCount > 0"
+        ></mat-paginator>
+      </mat-card-content>
+    </mat-card>
+  </ng-container>
+</div>

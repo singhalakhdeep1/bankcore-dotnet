@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
@@ -46,7 +47,7 @@ namespace BankCore.Services.Idempotency
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error checking idempotency for key: {idempotencyKey}", ex);
+                _logger.LogError(ex, $"Error checking idempotency for key: {idempotencyKey}");
                 // Fail open - allow request if cache check fails
                 return false;
             }
@@ -71,7 +72,7 @@ namespace BankCore.Services.Idempotency
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error getting cached response for key: {idempotencyKey}", ex);
+                _logger.LogError(ex, $"Error getting cached response for key: {idempotencyKey}");
                 return default;
             }
         }
@@ -97,7 +98,7 @@ namespace BankCore.Services.Idempotency
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error storing response for idempotency key: {idempotencyKey}", ex);
+                _logger.LogError(ex, $"Error storing response for idempotency key: {idempotencyKey}");
             }
         }
 
@@ -161,7 +162,7 @@ namespace BankCore.Services.Idempotency
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error invalidating idempotency key: {idempotencyKey}", ex);
+                _logger.LogError(ex, $"Error invalidating idempotency key: {idempotencyKey}");
             }
         }
 
@@ -176,14 +177,14 @@ namespace BankCore.Services.Idempotency
         /// <summary>
         /// Get idempotency statistics
         /// </summary>
-        public async Task<IdempotencyStatistics> GetStatisticsAsync()
+        public Task<IdempotencyStatistics> GetStatisticsAsync()
         {
-            // This would require Redis-specific implementation to get statistics
-            return new IdempotencyStatistics
+            // Placeholder: real statistics need a Redis-specific implementation.
+            return Task.FromResult(new IdempotencyStatistics
             {
                 TotalKeys = 0,
                 LastUpdated = DateTime.UtcNow
-            };
+            });
         }
     }
 

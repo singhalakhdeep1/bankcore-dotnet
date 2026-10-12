@@ -151,9 +151,9 @@ namespace BankCore.Services.Logging
     public class LogEntry
     {
         public DateTime Timestamp { get; set; }
-        public string Level { get; set; }
-        public string Message { get; set; }
-        public string CorrelationId { get; set; }
+        public string Level { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string CorrelationId { get; set; } = string.Empty;
         public string? UserId { get; set; }
         public string? AccountId { get; set; }
         public string? RequestId { get; set; }

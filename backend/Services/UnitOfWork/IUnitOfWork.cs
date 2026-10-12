@@ -1,6 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using BankCore.Data;
+using BankingAPI.Data;
 using BankCore.Services.Repositories;
 
 namespace BankCore.Services.UnitOfWork

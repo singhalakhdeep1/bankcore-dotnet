@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using BankingAPI.Services;
-using System.Security.Claims;
+using BankingAPI.Extensions;
 
 namespace BankingAPI.Controllers;
 
@@ -20,15 +20,13 @@ public class UserController : ControllerBase
     [HttpGet("profile")]
     public async Task<IActionResult> GetProfile()
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        
-        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+        if (User.GetUserId() is not { } userId)
         {
             return Unauthorized();
         }
 
         var user = await _authService.GetUserByIdAsync(userId);
-        
+
         if (user == null)
         {
             return NotFound(new { message = "User not found" });

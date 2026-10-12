@@ -136,7 +136,7 @@ namespace BankCore.Services.ReadReplica
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Lag check failed for replica {replicaId}", ex);
+                    _logger.LogError(ex, $"Lag check failed for replica {replicaId}");
                     lagStatus[replicaId] = new ReplicaLag
                     {
                         ReplicaId = replicaId,
@@ -172,7 +172,7 @@ namespace BankCore.Services.ReadReplica
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Health check failed for replica {replicaId}", ex);
+                    _logger.LogError(ex, $"Health check failed for replica {replicaId}");
                     client.IsHealthy = false;
                     healthStatus[replicaId] = false;
                 }
@@ -187,9 +187,9 @@ namespace BankCore.Services.ReadReplica
     /// </summary>
     public class ReplicaConfig
     {
-        public string Id { get; set; }
-        public string ConnectionString { get; set; }
-        public string Region { get; set; }
+        public string Id { get; set; } = string.Empty;
+        public string ConnectionString { get; set; } = string.Empty;
+        public string Region { get; set; } = string.Empty;
         public bool IsPrimary { get; set; }
         public int Weight { get; set; } = 1;
     }
@@ -199,7 +199,7 @@ namespace BankCore.Services.ReadReplica
     /// </summary>
     public class ReadReplicaOptions
     {
-        public string PrimaryConnectionString { get; set; }
+        public string PrimaryConnectionString { get; set; } = string.Empty;
         public List<ReplicaConfig> Replicas { get; set; } = new();
     }
 
@@ -251,7 +251,7 @@ namespace BankCore.Services.ReadReplica
     /// </summary>
     public class ReplicaLag
     {
-        public string ReplicaId { get; set; }
+        public string ReplicaId { get; set; } = string.Empty;
         public int LagSeconds { get; set; }
         public DateTime LastChecked { get; set; }
         public string? Error { get; set; }

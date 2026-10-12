@@ -65,12 +65,14 @@ public class ComplianceService : IComplianceService
         var account = await _context.Accounts.FindAsync(transaction.AccountId);
         if (account != null)
         {
+            // Average of the account's *previous* completed transactions (nullable so an empty history is fine).
             var avgTransaction = await _context.Transactions
                 .Where(t => t.AccountId == transaction.AccountId &&
+                           t.Id != transaction.Id &&
                            t.Status == TransactionStatus.Completed)
-                .AverageAsync(t => Math.Abs(t.Amount));
+                .AverageAsync(t => (decimal?)Math.Abs(t.Amount)) ?? 0m;
 
-            if (Math.Abs(transaction.Amount) > avgTransaction * 5)
+            if (avgTransaction > 0 && Math.Abs(transaction.Amount) > avgTransaction * 5)
             {
                 alerts.Add(new ComplianceAlert
                 {
@@ -176,22 +178,6 @@ public class ComplianceService : IComplianceService
         return Math.Max(0, score);
     }
 }
-
-public class ComplianceAlert
-{
-    public Guid Id { get; set; }
-    public Guid AccountId { get; set; }
-    public Guid TransactionId { get; set; }
-    public string AlertType { get; set; } = string.Empty;
-    public string Severity { get; set; } = "Low";
-    public string Description { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-
-    // Navigation properties
-    public Account Account { get; set; } = null!;
-    public Transaction Transaction { get; set; } = null!;
-}
-
 public class ComplianceReport
 {
     public Guid AccountId { get; set; }

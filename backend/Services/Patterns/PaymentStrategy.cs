@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System;
 using System.Threading.Tasks;
 
@@ -21,12 +22,12 @@ namespace BankCore.Services.Patterns
     /// </summary>
     public class PaymentRequest
     {
-        public string AccountId { get; set; }
+        public string AccountId { get; set; } = string.Empty;
         public decimal Amount { get; set; }
-        public string Currency { get; set; }
-        public string ReferenceNumber { get; set; }
-        public string Description { get; set; }
-        public Dictionary<string, string> Metadata { get; set; }
+        public string Currency { get; set; } = string.Empty;
+        public string ReferenceNumber { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public Dictionary<string, string> Metadata { get; set; } = new();
     }
 
     /// <summary>
@@ -35,11 +36,11 @@ namespace BankCore.Services.Patterns
     public class PaymentResult
     {
         public bool Success { get; set; }
-        public string TransactionId { get; set; }
-        public string Message { get; set; }
+        public string TransactionId { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
         public decimal Fee { get; set; }
         public DateTime ProcessedAt { get; set; }
-        public Dictionary<string, string> Metadata { get; set; }
+        public Dictionary<string, string> Metadata { get; set; } = new();
     }
 
     /// <summary>
@@ -47,9 +48,9 @@ namespace BankCore.Services.Patterns
     /// </summary>
     public class RefundRequest
     {
-        public string TransactionId { get; set; }
+        public string TransactionId { get; set; } = string.Empty;
         public decimal Amount { get; set; }
-        public string Reason { get; set; }
+        public string Reason { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -58,8 +59,8 @@ namespace BankCore.Services.Patterns
     public class RefundResult
     {
         public bool Success { get; set; }
-        public string RefundId { get; set; }
-        public string Message { get; set; }
+        public string RefundId { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
         public DateTime ProcessedAt { get; set; }
     }
 
@@ -255,8 +256,8 @@ namespace BankCore.Services.Patterns
     /// </summary>
     public class StripeOptions
     {
-        public string ApiKey { get; set; }
-        public string WebhookSecret { get; set; }
+        public string ApiKey { get; set; } = string.Empty;
+        public string WebhookSecret { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -264,8 +265,8 @@ namespace BankCore.Services.Patterns
     /// </summary>
     public class PayPalOptions
     {
-        public string ClientId { get; set; }
-        public string ClientSecret { get; set; }
+        public string ClientId { get; set; } = string.Empty;
+        public string ClientSecret { get; set; } = string.Empty;
         public string Mode { get; set; } = "sandbox";
     }
 }

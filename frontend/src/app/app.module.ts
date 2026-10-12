@@ -15,6 +15,9 @@ import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatSelectModule } from '@angular/material/select';
+import { MatTabsModule } from '@angular/material/tabs';
+import { MatPaginatorModule } from '@angular/material/paginator';
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
@@ -22,6 +25,7 @@ import { LoginComponent } from './components/auth/login/login.component';
 import { RegisterComponent } from './components/auth/register/register.component';
 import { DashboardComponent } from './components/dashboard/dashboard.component';
 import { AccountsComponent } from './components/accounts/accounts.component';
+import { AccountDetailComponent } from './components/account-detail/account-detail.component';
 import { NavbarComponent } from './components/navbar/navbar.component';
 import { AuthInterceptor } from './interceptors/auth.interceptor';
 
@@ -32,6 +36,7 @@ import { AuthInterceptor } from './interceptors/auth.interceptor';
         RegisterComponent,
         DashboardComponent,
         AccountsComponent,
+        AccountDetailComponent,
         NavbarComponent
     ],
     imports: [
@@ -49,7 +54,10 @@ import { AuthInterceptor } from './interceptors/auth.interceptor';
         MatSnackBarModule,
         MatTableModule,
         MatProgressSpinnerModule,
-        MatMenuModule
+        MatMenuModule,
+        MatSelectModule,
+        MatTabsModule,
+        MatPaginatorModule
     ],
     providers: [
         {

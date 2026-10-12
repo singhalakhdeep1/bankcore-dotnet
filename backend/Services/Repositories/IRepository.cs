@@ -137,7 +137,7 @@ namespace BankCore.Services.Repositories
     /// </summary>
     public class PaginatedResult<T>
     {
-        public IEnumerable<T> Items { get; set; }
+        public IEnumerable<T> Items { get; set; } = new List<T>();
         public int TotalCount { get; set; }
         public int PageNumber { get; set; }
         public int PageSize { get; set; }
@@ -151,7 +151,7 @@ namespace BankCore.Services.Repositories
     /// </summary>
     public class CursorPaginatedResult<T>
     {
-        public IEnumerable<T> Items { get; set; }
+        public IEnumerable<T> Items { get; set; } = new List<T>();
         public string? NextCursor { get; set; }
         public string? PreviousCursor { get; set; }
         public bool HasMore { get; set; }

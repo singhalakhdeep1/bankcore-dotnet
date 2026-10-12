@@ -13,10 +13,7 @@ export class AuthService {
     private apiUrl = `${environment.apiUrl}/auth`;
 
     constructor(private http: HttpClient) {
-        const storedUser = localStorage.getItem('currentUser');
-        this.currentUserSubject = new BehaviorSubject<User | null>(
-            storedUser ? JSON.parse(storedUser) : null
-        );
+        this.currentUserSubject = new BehaviorSubject<User | null>(this.readStoredUser());
         this.currentUser = this.currentUserSubject.asObservable();
     }
 
@@ -26,26 +23,18 @@ export class AuthService {
 
     login(credentials: LoginRequest): Observable<AuthResponse> {
         return this.http.post<AuthResponse>(`${this.apiUrl}/login`, credentials)
-            .pipe(
-                tap(response => {
-                    localStorage.setItem('accessToken', response.accessToken);
-                    localStorage.setItem('refreshToken', response.refreshToken);
-                    localStorage.setItem('currentUser', JSON.stringify(response.user));
-                    this.currentUserSubject.next(response.user);
-                })
-            );
+            .pipe(tap(response => this.storeSession(response)));
     }
 
     register(data: RegisterRequest): Observable<AuthResponse> {
         return this.http.post<AuthResponse>(`${this.apiUrl}/register`, data)
-            .pipe(
-                tap(response => {
-                    localStorage.setItem('accessToken', response.accessToken);
-                    localStorage.setItem('refreshToken', response.refreshToken);
-                    localStorage.setItem('currentUser', JSON.stringify(response.user));
-                    this.currentUserSubject.next(response.user);
-                })
-            );
+            .pipe(tap(response => this.storeSession(response)));
+    }
+
+    /** Exchanges the stored refresh token for a new access/refresh token pair. */
+    refresh(): Observable<AuthResponse> {
+        return this.http.post<AuthResponse>(`${this.apiUrl}/refresh`, { refreshToken: this.getRefreshToken() })
+            .pipe(tap(response => this.storeSession(response)));
     }
 
     logout(): void {
@@ -61,5 +50,25 @@ export class AuthService {
 
     getToken(): string | null {
         return localStorage.getItem('accessToken');
+    }
+
+    getRefreshToken(): string | null {
+        return localStorage.getItem('refreshToken');
+    }
+
+    private storeSession(response: AuthResponse): void {
+        localStorage.setItem('accessToken', response.accessToken);
+        localStorage.setItem('refreshToken', response.refreshToken);
+        localStorage.setItem('currentUser', JSON.stringify(response.user));
+        this.currentUserSubject.next(response.user);
+    }
+
+    private readStoredUser(): User | null {
+        try {
+            const stored = localStorage.getItem('currentUser');
+            return stored ? JSON.parse(stored) as User : null;
+        } catch {
+            return null;
+        }
     }
 }

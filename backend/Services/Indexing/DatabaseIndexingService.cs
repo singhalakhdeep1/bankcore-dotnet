@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using BankCore.Data;
+using BankingAPI.Data;
 
 namespace BankCore.Services.Indexing
 {
@@ -147,7 +147,7 @@ namespace BankCore.Services.Indexing
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Failed to create index {index.IndexName}", ex);
+                _logger.LogError(ex, $"Failed to create index {index.IndexName}");
                 throw;
             }
         }
@@ -166,7 +166,7 @@ namespace BankCore.Services.Indexing
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Failed to drop index {indexName}", ex);
+                _logger.LogError(ex, $"Failed to drop index {indexName}");
                 throw;
             }
         }
@@ -198,7 +198,7 @@ namespace BankCore.Services.Indexing
             }
             catch (Exception ex)
             {
-                _logger.LogError("Failed to retrieve index statistics", ex);
+                _logger.LogError(ex, "Failed to retrieve index statistics");
             }
 
             return statistics;
@@ -207,15 +207,11 @@ namespace BankCore.Services.Indexing
         /// <summary>
         /// Analyze query performance and suggest indexes
         /// </summary>
-        public async Task<List<IndexSuggestion>> AnalyzeQueryPerformanceAsync()
+        public Task<List<IndexSuggestion>> AnalyzeQueryPerformanceAsync()
         {
-            var suggestions = new List<IndexSuggestion>();
-
-            // This would analyze slow queries and suggest indexes
-            // For now, return empty list
-            
-            _logger.LogInformation("Query performance analysis completed");
-            return suggestions;
+            // Placeholder: a real implementation would read pg_stat_statements and suggest indexes.
+            _logger.LogInformation("Query performance analysis is not implemented; returning no suggestions");
+            return Task.FromResult(new List<IndexSuggestion>());
         }
 
         /// <summary>
@@ -234,7 +230,7 @@ namespace BankCore.Services.Indexing
             }
             catch (Exception ex)
             {
-                _logger.LogError("Failed to rebuild indexes", ex);
+                _logger.LogError(ex, "Failed to rebuild indexes");
                 throw;
             }
         }
@@ -248,22 +244,32 @@ namespace BankCore.Services.Indexing
 
             try
             {
-                var sql = @"
-                    SELECT 
-                        indexname,
-                        indexdef
-                    FROM pg_indexes
-                    WHERE tablename = @tableName";
+                var rows = await _context.Database
+                    .SqlQuery<IndexRow>($"SELECT indexname AS \"Name\", indexdef AS \"Definition\" FROM pg_indexes WHERE tablename = {tableName}")
+                    .ToListAsync();
 
-                // Execute query and map results
-                _logger.LogInformation($"Retrieved indexes for table: {tableName}");
+                foreach (var row in rows)
+                {
+                    indexes.Add(new DatabaseIndex
+                    {
+                        TableName = tableName,
+                        IndexName = row.Name,
+                        IsUnique = row.Definition.Contains("UNIQUE INDEX", StringComparison.OrdinalIgnoreCase)
+                    });
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Failed to retrieve indexes for table {tableName}", ex);
+                _logger.LogError(ex, "Failed to retrieve indexes for table {Table}", tableName);
             }
 
             return indexes;
+        }
+
+        private sealed class IndexRow
+        {
+            public string Name { get; set; } = string.Empty;
+            public string Definition { get; set; } = string.Empty;
         }
     }
 
@@ -272,9 +278,9 @@ namespace BankCore.Services.Indexing
     /// </summary>
     public class DatabaseIndex
     {
-        public string TableName { get; set; }
-        public string IndexName { get; set; }
-        public string[] Columns { get; set; }
+        public string TableName { get; set; } = string.Empty;
+        public string IndexName { get; set; } = string.Empty;
+        public string[] Columns { get; set; } = Array.Empty<string>();
         public bool IsUnique { get; set; }
         public bool IsClustered { get; set; }
     }
@@ -284,9 +290,9 @@ namespace BankCore.Services.Indexing
     /// </summary>
     public class IndexStatistics
     {
-        public string SchemaName { get; set; }
-        public string TableName { get; set; }
-        public string IndexName { get; set; }
+        public string SchemaName { get; set; } = string.Empty;
+        public string TableName { get; set; } = string.Empty;
+        public string IndexName { get; set; } = string.Empty;
         public long IndexScans { get; set; }
         public long TuplesRead { get; set; }
         public long TuplesFetched { get; set; }
@@ -297,9 +303,9 @@ namespace BankCore.Services.Indexing
     /// </summary>
     public class IndexSuggestion
     {
-        public string TableName { get; set; }
-        public string[] Columns { get; set; }
-        public string Reason { get; set; }
+        public string TableName { get; set; } = string.Empty;
+        public string[] Columns { get; set; } = Array.Empty<string>();
+        public string Reason { get; set; } = string.Empty;
         public double EstimatedImprovement { get; set; }
     }
 }

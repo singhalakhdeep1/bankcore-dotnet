@@ -106,9 +106,9 @@ namespace BankCore.Services.ConnectionPooling
                 Pooling = false, // We manage our own pool
                 MinPoolSize = 0,
                 MaxPoolSize = 1,
-                ConnectionLifetime = _options.ConnectionLifetime,
+                ConnectionLifetime = (int)_options.ConnectionLifetime.TotalSeconds,
                 CommandTimeout = _options.CommandTimeout,
-                Keepalive = _options.KeepaliveInterval
+                KeepAlive = _options.KeepaliveInterval
             };
 
             var connection = new NpgsqlConnection(builder.ToString());
@@ -125,8 +125,7 @@ namespace BankCore.Services.ConnectionPooling
             try
             {
                 return connection != null && 
-                       connection.State == ConnectionState.Open &&
-                       !connection.IsBroken;
+                       connection.State == ConnectionState.Open;
             }
             catch
             {

@@ -2,7 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using BankingAPI.Services;
 using BankingAPI.DTOs;
-using System.Security.Claims;
+using BankingAPI.Extensions;
+using BankingAPI.Models;
 
 namespace BankingAPI.Controllers;
 
@@ -13,123 +14,151 @@ public class AccountsController : ControllerBase
 {
     private readonly IAccountService _accountService;
     private readonly ITransactionService _transactionService;
+    private readonly ILedgerService _ledgerService;
+    private readonly IComplianceService _complianceService;
 
-    public AccountsController(IAccountService accountService, ITransactionService transactionService)
+    public AccountsController(
+        IAccountService accountService,
+        ITransactionService transactionService,
+        ILedgerService ledgerService,
+        IComplianceService complianceService)
     {
         _accountService = accountService;
         _transactionService = transactionService;
+        _ledgerService = ledgerService;
+        _complianceService = complianceService;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAccounts()
     {
-        var userId = GetUserId();
-        var accounts = await _accountService.GetUserAccountsAsync(userId);
-        return Ok(accounts);
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+        return Ok(await _accountService.GetUserAccountsAsync(userId));
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetAccount(Guid id)
     {
-        var userId = GetUserId();
-        var account = await _accountService.GetAccountByIdAsync(id, userId);
-        
-        if (account == null)
-        {
-            return NotFound(new { message = "Account not found" });
-        }
+        if (User.GetUserId() is not { } userId) return Unauthorized();
 
-        return Ok(account);
+        var account = await _accountService.GetAccountByIdAsync(id, userId);
+        return account == null ? NotFound(new { message = "Account not found" }) : Ok(account);
     }
 
-    [HttpGet("{id}/transactions")]
+    [HttpGet("{id:guid}/transactions")]
     public async Task<IActionResult> GetTransactions(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var userId = GetUserId();
-        var account = await _accountService.GetAccountByIdAsync(id, userId);
-        
-        if (account == null)
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+        if (await _accountService.GetAccountByIdAsync(id, userId) == null)
         {
             return NotFound(new { message = "Account not found" });
         }
 
-        var transactions = await _transactionService.GetAccountTransactionsAsync(id, page, pageSize);
-        return Ok(transactions);
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var (transactions, totalCount) = await _transactionService.GetAccountTransactionsAsync(id, page, pageSize);
+        return Ok(new PagedResult<TransactionDto>
+        {
+            Items = transactions.Select(TransactionDto.From).ToList(),
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        });
+    }
+
+    [HttpGet("{id:guid}/ledger")]
+    public async Task<IActionResult> GetLedger(Guid id)
+    {
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+        if (await _accountService.GetAccountByIdAsync(id, userId) == null)
+        {
+            return NotFound(new { message = "Account not found" });
+        }
+
+        var entries = await _ledgerService.GetAccountLedgerAsync(id);
+        var reconciled = await _ledgerService.ReconcileAccountAsync(id);
+
+        return Ok(new
+        {
+            reconciled,
+            entries = entries.Select(e => new
+            {
+                e.Id,
+                e.TransactionId,
+                e.Debit,
+                e.Credit,
+                e.BalanceAfter,
+                e.Description,
+                e.CreatedAt
+            })
+        });
+    }
+
+    [HttpGet("{id:guid}/compliance")]
+    public async Task<IActionResult> GetComplianceReport(Guid id, [FromQuery] int days = 30)
+    {
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+        if (await _accountService.GetAccountByIdAsync(id, userId) == null)
+        {
+            return NotFound(new { message = "Account not found" });
+        }
+
+        days = Math.Clamp(days, 1, 365);
+        var end = DateTime.UtcNow;
+        var report = await _complianceService.GenerateComplianceReportAsync(id, end.AddDays(-days), end);
+        return Ok(report);
     }
 
     [HttpPost]
     public async Task<IActionResult> CreateAccount([FromBody] CreateAccountRequest request)
     {
-        var userId = GetUserId();
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+
         var account = await _accountService.CreateAccountAsync(userId, request);
-        
         if (account == null)
         {
-            return BadRequest(new { message = "Invalid account type" });
+            return BadRequest(new { message = $"Invalid account type. Use one of: {string.Join(", ", Enum.GetNames<AccountType>())}" });
         }
 
         return CreatedAtAction(nameof(GetAccount), new { id = account.Id }, account);
     }
 
-    [HttpPost("{id}/deposit")]
+    [HttpPost("{id:guid}/deposit")]
     public async Task<IActionResult> Deposit(Guid id, [FromBody] DepositRequest request)
     {
-        var userId = GetUserId();
-        var account = await _accountService.GetAccountByIdAsync(id, userId);
-        
-        if (account == null)
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+        if (await _accountService.GetAccountByIdAsync(id, userId) == null)
         {
             return NotFound(new { message = "Account not found" });
-        }
-
-        if (account.Status != Models.AccountStatus.Active)
-        {
-            return BadRequest(new { message = "Account is not active" });
-        }
-
-        if (request.Amount <= 0)
-        {
-            return BadRequest(new { message = "Amount must be positive" });
         }
 
         try
         {
             var transaction = await _transactionService.DepositAsync(id, request.Amount, request.Description);
-            return Ok(transaction);
+            return Ok(TransactionDto.From(transaction!));
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
     }
 
-    [HttpPost("{id}/withdraw")]
+    [HttpPost("{id:guid}/withdraw")]
     public async Task<IActionResult> Withdraw(Guid id, [FromBody] WithdrawRequest request)
     {
-        var userId = GetUserId();
-        var account = await _accountService.GetAccountByIdAsync(id, userId);
-        
-        if (account == null)
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+        if (await _accountService.GetAccountByIdAsync(id, userId) == null)
         {
             return NotFound(new { message = "Account not found" });
-        }
-
-        if (account.Status != Models.AccountStatus.Active)
-        {
-            return BadRequest(new { message = "Account is not active" });
-        }
-
-        if (request.Amount <= 0)
-        {
-            return BadRequest(new { message = "Amount must be positive" });
         }
 
         try
         {
             var transaction = await _transactionService.WithdrawAsync(id, request.Amount, request.Description);
-            return Ok(transaction);
+            return Ok(TransactionDto.From(transaction!));
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
@@ -138,38 +167,49 @@ public class AccountsController : ControllerBase
     [HttpPost("transfer")]
     public async Task<IActionResult> Transfer([FromBody] TransferRequest request)
     {
-        var userId = GetUserId();
-        
-        if (request.Amount <= 0)
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+
+        var toAccountId = request.ToAccountId;
+        if (toAccountId == null && !string.IsNullOrWhiteSpace(request.ToAccountNumber))
         {
-            return BadRequest(new { message = "Amount must be positive" });
+            toAccountId = await _accountService.GetAccountIdByNumberAsync(request.ToAccountNumber);
         }
 
-        if (request.FromAccountId == request.ToAccountId)
+        if (toAccountId == null)
         {
-            return BadRequest(new { message = "Cannot transfer to same account" });
+            return NotFound(new { message = "Destination account not found" });
         }
+
+        if (request.FromAccountId == toAccountId)
+        {
+            return BadRequest(new { message = "Cannot transfer to the same account" });
+        }
+
+        // The source account must belong to the caller; the destination may be anyone's.
+        if (await _accountService.GetAccountByIdAsync(request.FromAccountId, userId) == null)
+        {
+            return NotFound(new { message = "Source account not found" });
+        }
+
+        // Scope the key to the caller so one customer's key can never collide with another's.
+        var idempotencyKey = string.IsNullOrWhiteSpace(request.IdempotencyKey)
+            ? null
+            : $"{userId:N}-{request.IdempotencyKey.Trim()}";
 
         try
         {
-            var transactions = await _transactionService.TransferAsync(
-                request.FromAccountId, 
-                request.ToAccountId, 
-                request.Amount, 
-                request.Description,
-                request.IdempotencyKey
-            );
-            return Ok(transactions);
+            var (fromTx, toTx) = await _transactionService.TransferAsync(
+                request.FromAccountId, toAccountId.Value, request.Amount, request.Description, idempotencyKey);
+
+            return Ok(new TransferResultDto
+            {
+                From = TransactionDto.From(fromTx!),
+                To = TransactionDto.From(toTx!)
+            });
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
-    }
-
-    private Guid GetUserId()
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.Parse(userIdClaim!);
     }
 }

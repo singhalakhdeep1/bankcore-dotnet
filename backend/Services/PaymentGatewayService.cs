@@ -1,8 +1,6 @@
 using BankingAPI.Data;
 using BankingAPI.Models;
-using BankingAPI.DTOs;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace BankingAPI.Services;
 
@@ -14,26 +12,30 @@ public interface IPaymentGatewayService
     Task<List<PaymentLog>> GetPaymentLogsAsync(Guid accountId);
 }
 
+/// <summary>
+/// Merchant payments against a bank account. The external gateway is simulated
+/// (see <see cref="SimulateGatewayProcessing"/>); everything else - the account debit, the ledger entry,
+/// the audit log and refunds - is real and goes through <see cref="ITransactionService"/>.
+/// </summary>
 public class PaymentGatewayService : IPaymentGatewayService
 {
     private readonly ApplicationDbContext _context;
     private readonly ITransactionService _transactionService;
-    private readonly HttpClient _httpClient;
+    private readonly IConfiguration _configuration;
 
     public PaymentGatewayService(
         ApplicationDbContext context,
         ITransactionService transactionService,
-        IHttpClientFactory httpClientFactory)
+        IConfiguration configuration)
     {
         _context = context;
         _transactionService = transactionService;
-        _httpClient = httpClientFactory.CreateClient();
+        _configuration = configuration;
     }
 
     public async Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request)
     {
-        // Validate request
-        if (request.Amount <= 0)
+        if (request.Amount <= 0 || decimal.Round(request.Amount, 2) != request.Amount)
         {
             return new PaymentResult { Success = false, ErrorMessage = "Invalid amount" };
         }
@@ -44,15 +46,13 @@ public class PaymentGatewayService : IPaymentGatewayService
             return new PaymentResult { Success = false, ErrorMessage = "Account not found or inactive" };
         }
 
-        if (account.Balance < request.Amount)
+        if (account.Balance + account.OverdraftLimit < request.Amount)
         {
             return new PaymentResult { Success = false, ErrorMessage = "Insufficient funds" };
         }
 
-        // Generate transaction ID
-        var transactionId = $"PAY{DateTime.UtcNow:yyyyMMddHHmmss}{new Random().Next(1000, 9999)}";
+        var transactionId = $"PAY{DateTime.UtcNow:yyyyMMddHHmmss}{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
 
-        // Log payment attempt
         var paymentLog = new PaymentLog
         {
             Id = Guid.NewGuid(),
@@ -62,7 +62,8 @@ public class PaymentGatewayService : IPaymentGatewayService
             Currency = account.Currency,
             MerchantName = request.MerchantName,
             Status = "Processing",
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
         };
 
         _context.PaymentLogs.Add(paymentLog);
@@ -70,49 +71,37 @@ public class PaymentGatewayService : IPaymentGatewayService
 
         try
         {
-            // Simulate payment gateway processing
-            var gatewayResponse = await SimulateGatewayProcessing(request, transactionId);
+            var gatewayResponse = await SimulateGatewayProcessing();
 
-            if (gatewayResponse.Success)
+            if (!gatewayResponse.Success)
             {
-                // Process the actual transaction
-                var transaction = await _transactionService.ProcessPaymentAsync(
-                    request.AccountId,
-                    request.Amount,
-                    request.MerchantName,
-                    request.Description
-                );
-
-                if (transaction != null)
-                {
-                    paymentLog.Status = "Completed";
-                    paymentLog.GatewayTransactionId = gatewayResponse.GatewayTransactionId;
-                    paymentLog.UpdatedAt = DateTime.UtcNow;
-
-                    await _context.SaveChangesAsync();
-
-                    return new PaymentResult
-                    {
-                        Success = true,
-                        TransactionId = transactionId,
-                        GatewayTransactionId = gatewayResponse.GatewayTransactionId,
-                        Amount = request.Amount,
-                        Currency = account.Currency,
-                        ProcessedAt = DateTime.UtcNow
-                    };
-                }
+                return await FailAsync(paymentLog, gatewayResponse.ErrorMessage ?? "Payment declined by gateway");
             }
 
-            paymentLog.Status = "Failed";
-            paymentLog.ErrorMessage = gatewayResponse.ErrorMessage;
+            var transaction = await _transactionService.ProcessPaymentAsync(
+                request.AccountId, request.Amount, request.MerchantName, request.Description);
+
+            if (transaction == null)
+            {
+                return await FailAsync(paymentLog, "Payment rejected: insufficient funds or daily limit exceeded");
+            }
+
+            paymentLog.Status = "Completed";
+            paymentLog.GatewayTransactionId = gatewayResponse.GatewayTransactionId;
+            paymentLog.LedgerTransactionId = transaction.Id;
             paymentLog.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
             return new PaymentResult
             {
-                Success = false,
+                Success = true,
+                AccountId = request.AccountId,
                 TransactionId = transactionId,
-                ErrorMessage = gatewayResponse.ErrorMessage
+                GatewayTransactionId = gatewayResponse.GatewayTransactionId,
+                Status = paymentLog.Status,
+                Amount = request.Amount,
+                Currency = account.Currency,
+                ProcessedAt = DateTime.UtcNow
             };
         }
         catch (Exception ex)
@@ -125,16 +114,18 @@ public class PaymentGatewayService : IPaymentGatewayService
             return new PaymentResult
             {
                 Success = false,
+                AccountId = request.AccountId,
                 TransactionId = transactionId,
+                Status = paymentLog.Status,
                 ErrorMessage = "Payment processing error"
             };
         }
     }
 
+    /// <summary>Refunds a completed payment, in full or in part, by crediting the account.</summary>
     public async Task<PaymentResult> RefundPaymentAsync(string transactionId, decimal? amount = null)
     {
-        var paymentLog = await _context.PaymentLogs
-            .FirstOrDefaultAsync(pl => pl.TransactionId == transactionId);
+        var paymentLog = await _context.PaymentLogs.FirstOrDefaultAsync(pl => pl.TransactionId == transactionId);
 
         if (paymentLog == null || paymentLog.Status != "Completed")
         {
@@ -142,36 +133,39 @@ public class PaymentGatewayService : IPaymentGatewayService
         }
 
         var refundAmount = amount ?? paymentLog.Amount;
-
-        // Process refund transaction
-        var refundTransaction = await _transactionService.ReverseTransactionAsync(
-            Guid.Parse(paymentLog.TransactionId.Replace("PAY", "").Substring(0, 32)),
-            "Refund requested"
-        );
-
-        if (refundTransaction != null)
+        if (refundAmount <= 0 || refundAmount > paymentLog.Amount || decimal.Round(refundAmount, 2) != refundAmount)
         {
-            paymentLog.Status = "Refunded";
-            paymentLog.RefundAmount = refundAmount;
-            paymentLog.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-
-            return new PaymentResult
-            {
-                Success = true,
-                TransactionId = $"REF{DateTime.UtcNow:yyyyMMddHHmmss}{new Random().Next(1000, 9999)}",
-                Amount = refundAmount,
-                Currency = paymentLog.Currency,
-                ProcessedAt = DateTime.UtcNow
-            };
+            return new PaymentResult { Success = false, ErrorMessage = "Refund amount must be between 0.01 and the payment amount" };
         }
 
-        return new PaymentResult { Success = false, ErrorMessage = "Refund processing failed" };
+        var refundTransaction = await _transactionService.ProcessRefundAsync(
+            paymentLog.AccountId, refundAmount, $"payment {paymentLog.TransactionId} to {paymentLog.MerchantName}");
+
+        if (refundTransaction == null)
+        {
+            return new PaymentResult { Success = false, ErrorMessage = "Refund processing failed" };
+        }
+
+        paymentLog.Status = "Refunded";
+        paymentLog.RefundAmount = refundAmount;
+        paymentLog.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return new PaymentResult
+        {
+            Success = true,
+            AccountId = paymentLog.AccountId,
+            TransactionId = paymentLog.TransactionId,
+            Status = paymentLog.Status,
+            Amount = refundAmount,
+            Currency = paymentLog.Currency,
+            ProcessedAt = paymentLog.UpdatedAt
+        };
     }
 
     public async Task<PaymentResult> GetPaymentStatusAsync(string transactionId)
     {
-        var paymentLog = await _context.PaymentLogs
+        var paymentLog = await _context.PaymentLogs.AsNoTracking()
             .FirstOrDefaultAsync(pl => pl.TransactionId == transactionId);
 
         if (paymentLog == null)
@@ -182,45 +176,62 @@ public class PaymentGatewayService : IPaymentGatewayService
         return new PaymentResult
         {
             Success = paymentLog.Status == "Completed",
+            AccountId = paymentLog.AccountId,
             TransactionId = transactionId,
+            GatewayTransactionId = paymentLog.GatewayTransactionId,
             Status = paymentLog.Status,
             Amount = paymentLog.Amount,
             Currency = paymentLog.Currency,
-            ProcessedAt = paymentLog.UpdatedAt
+            ProcessedAt = paymentLog.UpdatedAt,
+            ErrorMessage = paymentLog.ErrorMessage
         };
     }
 
     public async Task<List<PaymentLog>> GetPaymentLogsAsync(Guid accountId)
     {
         return await _context.PaymentLogs
+            .AsNoTracking()
             .Where(pl => pl.AccountId == accountId)
             .OrderByDescending(pl => pl.CreatedAt)
             .ToListAsync();
     }
 
-    private async Task<GatewayResponse> SimulateGatewayProcessing(PaymentRequest request, string transactionId)
+    private async Task<PaymentResult> FailAsync(PaymentLog paymentLog, string message)
     {
-        // Simulate network delay
-        await Task.Delay(500);
+        paymentLog.Status = "Failed";
+        paymentLog.ErrorMessage = message;
+        paymentLog.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
 
-        // Simulate success rate (95% success)
-        var random = new Random();
-        var isSuccess = random.Next(100) < 95;
-
-        if (isSuccess)
+        return new PaymentResult
         {
-            return new GatewayResponse
-            {
-                Success = true,
-                GatewayTransactionId = $"GW{Guid.NewGuid():N}",
-                ProcessedAt = DateTime.UtcNow
-            };
+            Success = false,
+            AccountId = paymentLog.AccountId,
+            TransactionId = paymentLog.TransactionId,
+            Status = paymentLog.Status,
+            ErrorMessage = message
+        };
+    }
+
+    /// <summary>
+    /// Stand-in for a real processor (Stripe, PayPal, ...). Approves every payment unless
+    /// <c>Payments:SimulatedDeclineRate</c> (0-1) is configured, which declines that share at random.
+    /// </summary>
+    private async Task<GatewayResponse> SimulateGatewayProcessing()
+    {
+        await Task.Delay(200);
+
+        var declineRate = _configuration.GetValue<double>("Payments:SimulatedDeclineRate");
+        if (declineRate > 0 && Random.Shared.NextDouble() < declineRate)
+        {
+            return new GatewayResponse { Success = false, ErrorMessage = "Payment declined by gateway" };
         }
 
         return new GatewayResponse
         {
-            Success = false,
-            ErrorMessage = "Payment declined by gateway"
+            Success = true,
+            GatewayTransactionId = $"GW{Guid.NewGuid():N}",
+            ProcessedAt = DateTime.UtcNow
         };
     }
 }
@@ -232,14 +243,12 @@ public class PaymentRequest
     public string Currency { get; set; } = "USD";
     public string MerchantName { get; set; } = string.Empty;
     public string? Description { get; set; }
-    public string CardToken { get; set; } = string.Empty;
-    public string BillingAddress { get; set; } = string.Empty;
-    public string BillingZip { get; set; } = string.Empty;
 }
 
 public class PaymentResult
 {
     public bool Success { get; set; }
+    public Guid AccountId { get; set; }
     public string TransactionId { get; set; } = string.Empty;
     public string? GatewayTransactionId { get; set; }
     public decimal Amount { get; set; }
@@ -247,25 +256,6 @@ public class PaymentResult
     public string? Status { get; set; }
     public DateTime? ProcessedAt { get; set; }
     public string? ErrorMessage { get; set; }
-}
-
-public class PaymentLog
-{
-    public Guid Id { get; set; }
-    public Guid AccountId { get; set; }
-    public string TransactionId { get; set; } = string.Empty;
-    public string? GatewayTransactionId { get; set; }
-    public decimal Amount { get; set; }
-    public string Currency { get; set; } = "USD";
-    public string MerchantName { get; set; } = string.Empty;
-    public string Status { get; set; } = "Pending";
-    public decimal? RefundAmount { get; set; }
-    public string? ErrorMessage { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-
-    // Navigation properties
-    public Account Account { get; set; } = null!;
 }
 
 public class GatewayResponse

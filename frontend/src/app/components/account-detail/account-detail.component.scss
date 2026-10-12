@@ -1,0 +1,57 @@
+.detail-container {
+  padding: 24px;
+  max-width: 1000px;
+  margin: 0 auto;
+
+  mat-card {
+    margin-bottom: 24px;
+  }
+}
+
+.summary mat-card-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.balance {
+  font-size: 36px;
+  font-weight: 600;
+  margin: 4px 0;
+}
+
+.badges {
+  display: flex;
+  gap: 8px;
+}
+
+.action-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  padding-top: 20px;
+}
+
+.note {
+  padding: 0 16px 16px;
+}
+
+.tx-table {
+  width: 100%;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  background-color: #f0f0f0;
+  color: #666;
+
+  &.active {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+  }
+}

@@ -116,7 +116,7 @@ namespace BankCore.Services.Sharding
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Health check failed for shard {shardId}", ex);
+                    _logger.LogError(ex, $"Health check failed for shard {shardId}");
                     healthStatus[shardId] = new ShardHealth
                     {
                         ShardId = shardId,
@@ -158,8 +158,8 @@ namespace BankCore.Services.Sharding
     /// </summary>
     public class ShardConfig
     {
-        public string Id { get; set; }
-        public string ConnectionString { get; set; }
+        public string Id { get; set; } = string.Empty;
+        public string ConnectionString { get; set; } = string.Empty;
         public ShardType ShardType { get; set; }
         public int Weight { get; set; } = 1;
         public bool IsActive { get; set; } = true;
@@ -218,7 +218,7 @@ namespace BankCore.Services.Sharding
     /// </summary>
     public class ShardHealth
     {
-        public string ShardId { get; set; }
+        public string ShardId { get; set; } = string.Empty;
         public bool IsHealthy { get; set; }
         public DateTime LastChecked { get; set; }
         public string? Error { get; set; }

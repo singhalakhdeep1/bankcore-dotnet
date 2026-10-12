@@ -1,18 +1,38 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace BankingAPI.DTOs;
 
 public class RegisterRequest
 {
+    [Required, EmailAddress, MaxLength(255)]
     public string Email { get; set; } = string.Empty;
+
+    [Required, MinLength(8), MaxLength(128)]
     public string Password { get; set; } = string.Empty;
+
+    [Required, MaxLength(100)]
     public string FirstName { get; set; } = string.Empty;
+
+    [Required, MaxLength(100)]
     public string LastName { get; set; } = string.Empty;
+
+    [Phone, MaxLength(30)]
     public string? Phone { get; set; }
 }
 
 public class LoginRequest
 {
+    [Required, EmailAddress]
     public string Email { get; set; } = string.Empty;
+
+    [Required]
     public string Password { get; set; } = string.Empty;
+}
+
+public class RefreshRequest
+{
+    [Required]
+    public string RefreshToken { get; set; } = string.Empty;
 }
 
 public class AuthResponse

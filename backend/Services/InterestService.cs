@@ -13,46 +13,35 @@ public interface IInterestService
 
 public class InterestService : IInterestService
 {
-    private readonly ApplicationDbContext _context;
-    private readonly ITransactionService _transactionService;
+    /// <summary>Annual rate used when an account has none set (4.5%).</summary>
+    public const decimal DefaultAnnualRate = 0.045m;
 
-    public InterestService(ApplicationDbContext context, ITransactionService transactionService)
+    private readonly ApplicationDbContext _context;
+    private readonly ILedgerService _ledgerService;
+    private readonly ILogger<InterestService>? _logger;
+
+    public InterestService(ApplicationDbContext context, ILedgerService ledgerService, ILogger<InterestService>? logger = null)
     {
         _context = context;
-        _transactionService = transactionService;
+        _ledgerService = ledgerService;
+        _logger = logger;
     }
 
     public async Task AccrueInterestAsync(Guid accountId)
     {
-        var account = await _context.Accounts.FindAsync(accountId);
-        if (account == null)
-        {
-            throw new InvalidOperationException("Account not found.");
-        }
+        var account = await _context.Accounts.FindAsync(accountId)
+            ?? throw new InvalidOperationException("Account not found.");
 
-        // Only accrue interest on savings accounts
-        if (account.AccountType != AccountType.Savings)
-        {
-            return;
-        }
+        var interest = ComputeDailyInterest(account);
+        if (interest <= 0) return;
 
-        if (account.Status != AccountStatus.Active)
-        {
-            return;
-        }
+        // Interest is credited once per account per UTC day, so restarts and repeat runs are harmless.
+        var today = DateTime.UtcNow.Date;
+        var alreadyPaid = await _context.Transactions.AnyAsync(t =>
+            t.AccountId == accountId && t.Type == TransactionType.Interest && t.CreatedAt >= today);
+        if (alreadyPaid) return;
 
-        // Calculate daily interest rate (4.5% annual / 365 days)
-        var annualRate = account.InterestRate > 0 ? account.InterestRate : 0.045m;
-        var dailyRate = annualRate / 365;
-        var interest = account.Balance * dailyRate;
-
-        // Only credit interest if it's meaningful (more than 0.01)
-        if (interest < 0.01m)
-        {
-            return;
-        }
-
-        // Create interest transaction
+        var now = DateTime.UtcNow;
         var transaction = new Transaction
         {
             Id = Guid.NewGuid(),
@@ -62,62 +51,61 @@ public class InterestService : IInterestService
             Currency = account.Currency,
             BalanceBefore = account.Balance,
             Description = "Interest payment",
-            ReferenceNumber = GenerateInterestReferenceNumber(),
+            ReferenceNumber = $"INT{now:yyyyMMddHHmmss}{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}",
             Status = TransactionStatus.Completed,
-            IpAddress = null
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
-        _context.Transactions.Add(transaction);
-
-        // Update account balance
         account.Balance += interest;
+        account.UpdatedAt = now;
         transaction.BalanceAfter = account.Balance;
-        account.UpdatedAt = DateTime.UtcNow;
-        transaction.UpdatedAt = DateTime.UtcNow;
 
+        _context.Transactions.Add(transaction);
         await _context.SaveChangesAsync();
+        await _ledgerService.RecordTransactionAsync(transaction);
     }
 
     public async Task AccrueInterestForAllAccountsAsync()
     {
-        var savingsAccounts = await _context.Accounts
+        var accountIds = await _context.Accounts
             .Where(a => a.AccountType == AccountType.Savings && a.Status == AccountStatus.Active)
+            .Select(a => a.Id)
             .ToListAsync();
 
-        foreach (var account in savingsAccounts)
+        foreach (var accountId in accountIds)
         {
             try
             {
-                await AccrueInterestAsync(account.Id);
+                await AccrueInterestAsync(accountId);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Log error but continue with other accounts
-                // In production, you'd want proper logging here
+                // One failing account must not stop interest for the others.
+                _logger?.LogError(ex, "Interest accrual failed for account {AccountId}", accountId);
+                _context.ChangeTracker.Clear();
             }
         }
     }
 
     public async Task<decimal> CalculateDailyInterestAsync(Guid accountId)
     {
-        var account = await _context.Accounts.FindAsync(accountId);
-        if (account == null)
-        {
-            throw new InvalidOperationException("Account not found.");
-        }
+        var account = await _context.Accounts.FindAsync(accountId)
+            ?? throw new InvalidOperationException("Account not found.");
 
-        if (account.AccountType != AccountType.Savings)
+        return ComputeDailyInterest(account);
+    }
+
+    /// <summary>Daily interest on a positive savings balance, rounded to cents; 0 if below one cent.</summary>
+    private static decimal ComputeDailyInterest(Account account)
+    {
+        if (account.AccountType != AccountType.Savings || account.Status != AccountStatus.Active || account.Balance <= 0)
         {
             return 0;
         }
 
-        var annualRate = account.InterestRate > 0 ? account.InterestRate : 0.045m;
-        var dailyRate = annualRate / 365;
-        return account.Balance * dailyRate;
-    }
-
-    private static string GenerateInterestReferenceNumber()
-    {
-        return $"INT{DateTime.UtcNow:yyyyMMddHHmmss}{new Random().Next(1000, 9999)}";
+        var annualRate = account.InterestRate > 0 ? account.InterestRate : DefaultAnnualRate;
+        var interest = Math.Round(account.Balance * annualRate / 365m, 2, MidpointRounding.ToZero);
+        return interest >= 0.01m ? interest : 0;
     }
 }

@@ -21,6 +21,11 @@ public class LedgerService : ILedgerService
         _context = context;
     }
 
+    /// <summary>
+    /// Writes one ledger entry for a completed transaction. Amounts on transactions are signed
+    /// (credits positive, debits negative), so the sign decides whether it is a debit or a credit.
+    /// The caller must have set <see cref="Transaction.BalanceAfter"/> already.
+    /// </summary>
     public async Task RecordTransactionAsync(Transaction transaction)
     {
         var ledgerEntry = new LedgerEntry
@@ -39,14 +44,12 @@ public class LedgerService : ILedgerService
         await _context.SaveChangesAsync();
     }
 
+    /// <summary>Balance derived purely from the ledger (sum of credits minus debits).</summary>
     public async Task<decimal> GetAccountBalanceAsync(Guid accountId)
     {
-        var latestEntry = await _context.LedgerEntries
+        return await _context.LedgerEntries
             .Where(le => le.AccountId == accountId)
-            .OrderByDescending(le => le.CreatedAt)
-            .FirstOrDefaultAsync();
-
-        return latestEntry?.BalanceAfter ?? 0;
+            .SumAsync(le => le.Credit - le.Debit);
     }
 
     public async Task<List<LedgerEntry>> GetAccountLedgerAsync(Guid accountId)
@@ -57,55 +60,16 @@ public class LedgerService : ILedgerService
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Checks that the stored account balance equals the ledger-derived balance.
+    /// This is a read-only check: a mismatch is reported, never silently "fixed".
+    /// </summary>
     public async Task<bool> ReconcileAccountAsync(Guid accountId)
     {
         var account = await _context.Accounts.FindAsync(accountId);
         if (account == null) return false;
 
-        // Calculate balance from ledger
-        var ledgerBalance = await _context.LedgerEntries
-            .Where(le => le.AccountId == accountId)
-            .SumAsync(le => le.Credit - le.Debit);
-
-        // Compare with account balance
-        var isReconciled = Math.Abs(account.Balance - ledgerBalance) < 0.01m;
-
-        if (!isReconciled)
-        {
-            // Create reconciliation entry
-            var adjustment = account.Balance - ledgerBalance;
-            var reconciliationEntry = new LedgerEntry
-            {
-                Id = Guid.NewGuid(),
-                AccountId = accountId,
-                TransactionId = Guid.Empty,
-                Debit = adjustment < 0 ? Math.Abs(adjustment) : 0,
-                Credit = adjustment > 0 ? adjustment : 0,
-                BalanceAfter = account.Balance,
-                Description = "Reconciliation Adjustment",
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.LedgerEntries.Add(reconciliationEntry);
-            await _context.SaveChangesAsync();
-        }
-
-        return isReconciled;
+        var ledgerBalance = await GetAccountBalanceAsync(accountId);
+        return Math.Abs(account.Balance - ledgerBalance) < 0.01m;
     }
-}
-
-public class LedgerEntry
-{
-    public Guid Id { get; set; }
-    public Guid AccountId { get; set; }
-    public Guid TransactionId { get; set; }
-    public decimal Debit { get; set; }
-    public decimal Credit { get; set; }
-    public decimal BalanceAfter { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-
-    // Navigation properties
-    public Account Account { get; set; } = null!;
-    public Transaction? Transaction { get; set; }
 }

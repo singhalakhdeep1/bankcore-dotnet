@@ -10,6 +10,7 @@ public interface IAuthService
 {
     Task<AuthResponse?> RegisterAsync(RegisterRequest request);
     Task<AuthResponse?> LoginAsync(LoginRequest request);
+    Task<AuthResponse?> RefreshAsync(string refreshToken);
     Task<UserDto?> GetUserByIdAsync(Guid userId);
 }
 
@@ -26,8 +27,10 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponse?> RegisterAsync(RegisterRequest request)
     {
+        var email = NormalizeEmail(request.Email);
+
         // Check if user exists
-        if (await _context.Users.AnyAsync(u => u.Email == request.Email))
+        if (await _context.Users.AnyAsync(u => u.Email == email))
         {
             return null;
         }
@@ -39,10 +42,10 @@ public class AuthService : IAuthService
         var user = new User
         {
             Id = Guid.NewGuid(),
-            Email = request.Email,
+            Email = email,
             Password = hashedPassword,
-            FirstName = request.FirstName,
-            LastName = request.LastName,
+            FirstName = request.FirstName.Trim(),
+            LastName = request.LastName.Trim(),
             Phone = request.Phone,
             Role = UserRole.Customer,
             KycStatus = KycStatus.Pending,
@@ -50,48 +53,51 @@ public class AuthService : IAuthService
         };
 
         _context.Users.Add(user);
-        await _context.SaveChangesAsync();
-
-        // Generate tokens
-        var accessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Role.ToString());
-        var refreshToken = _jwtService.GenerateRefreshToken(user.Id);
-
-        return new AuthResponse
+        try
         {
-            AccessToken = accessToken,
-            RefreshToken = refreshToken,
-            User = MapToUserDto(user)
-        };
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Two registrations for the same email raced past the check above; the unique index caught it.
+            _context.Entry(user).State = EntityState.Detached;
+            return null;
+        }
+
+        return BuildAuthResponse(user);
     }
 
     public async Task<AuthResponse?> LoginAsync(LoginRequest request)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+        var email = NormalizeEmail(request.Email);
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
 
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.Password))
         {
             return null;
         }
 
-        if (!user.IsActive)
+        if (!user.IsActive || user.IsLocked)
         {
             return null;
         }
 
-        // Update last login
         user.LastLoginAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
-        // Generate tokens
-        var accessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Role.ToString());
-        var refreshToken = _jwtService.GenerateRefreshToken(user.Id);
+        return BuildAuthResponse(user);
+    }
 
-        return new AuthResponse
-        {
-            AccessToken = accessToken,
-            RefreshToken = refreshToken,
-            User = MapToUserDto(user)
-        };
+    /// <summary>Exchanges a valid refresh token for a fresh access/refresh token pair.</summary>
+    public async Task<AuthResponse?> RefreshAsync(string refreshToken)
+    {
+        var userId = _jwtService.ValidateRefreshToken(refreshToken);
+        if (userId == null) return null;
+
+        var user = await _context.Users.FindAsync(userId.Value);
+        if (user == null || !user.IsActive || user.IsLocked) return null;
+
+        return BuildAuthResponse(user);
     }
 
     public async Task<UserDto?> GetUserByIdAsync(Guid userId)
@@ -99,6 +105,18 @@ public class AuthService : IAuthService
         var user = await _context.Users.FindAsync(userId);
         return user != null ? MapToUserDto(user) : null;
     }
+
+    private AuthResponse BuildAuthResponse(User user)
+    {
+        return new AuthResponse
+        {
+            AccessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Role.ToString()),
+            RefreshToken = _jwtService.GenerateRefreshToken(user.Id),
+            User = MapToUserDto(user)
+        };
+    }
+
+    private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 
     private static UserDto MapToUserDto(User user)
     {

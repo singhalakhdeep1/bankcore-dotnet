@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 
@@ -98,7 +99,7 @@ namespace BankCore.Services.SystemConstraints
 
             // Peak throughput analysis
             constraints.PeakTPS = requirements.TargetTPS * 3;
-            constraints.SustainedTPS = requirements.TargetTPS * 1.5;
+            constraints.SustainedTPS = (int)(requirements.TargetTPS * 1.5);
 
             // Throughput by operation type
             constraints.OperationThroughput = new Dictionary<string, int>
@@ -238,7 +239,7 @@ namespace BankCore.Services.SystemConstraints
         {
             var downtimePercentage = 100 - uptimePercentage;
             var totalSecondsPerYear = 365 * 24 * 60 * 60;
-            var allowedDowntimeSeconds = totalSecondsPerYear * (downtagePercentage / 100);
+            var allowedDowntimeSeconds = totalSecondsPerYear * (downtimePercentage / 100);
             return TimeSpan.FromSeconds(allowedDowntimeSeconds);
         }
 
@@ -307,7 +308,6 @@ namespace BankCore.Services.SystemConstraints
         private double CalculateComplianceScore(SystemConstraintsAnalysis analysis)
         {
             var score = 0.0;
-            var maxScore = 100.0;
 
             // Latency compliance (20 points)
             if (analysis.LatencyConstraints.IsWithinTarget) score += 20;
@@ -348,14 +348,14 @@ namespace BankCore.Services.SystemConstraints
     public class SystemConstraintsAnalysis
     {
         public DateTime AnalyzedAt { get; set; }
-        public SystemRequirements Requirements { get; set; }
-        public LatencyConstraints LatencyConstraints { get; set; }
-        public ThroughputConstraints ThroughputConstraints { get; set; }
-        public AvailabilityConstraints AvailabilityConstraints { get; set; }
-        public SecurityConstraints SecurityConstraints { get; set; }
-        public ComplianceConstraints ComplianceConstraints { get; set; }
-        public DataConstraints DataConstraints { get; set; }
-        public List<string> Recommendations { get; set; }
+        public SystemRequirements Requirements { get; set; } = new();
+        public LatencyConstraints LatencyConstraints { get; set; } = new();
+        public ThroughputConstraints ThroughputConstraints { get; set; } = new();
+        public AvailabilityConstraints AvailabilityConstraints { get; set; } = new();
+        public SecurityConstraints SecurityConstraints { get; set; } = new();
+        public ComplianceConstraints ComplianceConstraints { get; set; } = new();
+        public DataConstraints DataConstraints { get; set; } = new();
+        public List<string> Recommendations { get; set; } = new();
     }
 
     /// <summary>
@@ -368,7 +368,7 @@ namespace BankCore.Services.SystemConstraints
         public bool IsWithinTarget { get; set; }
         public double P95LatencyMs { get; set; }
         public double P99LatencyMs { get; set; }
-        public Dictionary<string, double> OperationLatency { get; set; }
+        public Dictionary<string, double> OperationLatency { get; set; } = new();
     }
 
     /// <summary>
@@ -381,7 +381,7 @@ namespace BankCore.Services.SystemConstraints
         public bool IsWithinTarget { get; set; }
         public int PeakTPS { get; set; }
         public int SustainedTPS { get; set; }
-        public Dictionary<string, int> OperationThroughput { get; set; }
+        public Dictionary<string, int> OperationThroughput { get; set; } = new();
     }
 
     /// <summary>
@@ -405,10 +405,10 @@ namespace BankCore.Services.SystemConstraints
     public class SecurityConstraints
     {
         public bool EncryptionRequired { get; set; }
-        public string EncryptionAtRest { get; set; }
-        public string EncryptionInTransit { get; set; }
+        public string EncryptionAtRest { get; set; } = string.Empty;
+        public string EncryptionInTransit { get; set; } = string.Empty;
         public bool AuthenticationRequired { get; set; }
-        public List<string> AuthenticationMethods { get; set; }
+        public List<string> AuthenticationMethods { get; set; } = new();
         public bool AuthorizationRequired { get; set; }
         public int SessionTimeoutMinutes { get; set; }
         public int MaxConcurrentSessions { get; set; }
@@ -422,14 +422,14 @@ namespace BankCore.Services.SystemConstraints
     /// </summary>
     public class ComplianceConstraints
     {
-        public List<string> ApplicableRegulations { get; set; }
+        public List<string> ApplicableRegulations { get; set; } = new();
         public int DataRetentionYears { get; set; }
         public int AuditLogRetentionYears { get; set; }
         public bool DataPrivacyConsent { get; set; }
         public bool RightToErasure { get; set; }
         public bool DataPortability { get; set; }
-        public string AuditReportFrequency { get; set; }
-        public string ComplianceAuditFrequency { get; set; }
+        public string AuditReportFrequency { get; set; } = string.Empty;
+        public string ComplianceAuditFrequency { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -440,13 +440,13 @@ namespace BankCore.Services.SystemConstraints
         public long MaxStorageCapacityTB { get; set; }
         public long MaxRecordCount { get; set; }
         public int MaxFileSizeMB { get; set; }
-        public string ConsistencyLevel { get; set; }
+        public string ConsistencyLevel { get; set; } = string.Empty;
         public int ReplicationFactor { get; set; }
-        public string BackupFrequency { get; set; }
+        public string BackupFrequency { get; set; } = string.Empty;
         public int BackupRetentionDays { get; set; }
         public bool ChecksumValidation { get; set; }
         public bool DataValidationRules { get; set; }
-        public string ReconciliationFrequency { get; set; }
+        public string ReconciliationFrequency { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -454,7 +454,7 @@ namespace BankCore.Services.SystemConstraints
     /// </summary>
     public class ComplianceReport
     {
-        public SystemConstraintsAnalysis Analysis { get; set; }
+        public SystemConstraintsAnalysis Analysis { get; set; } = new();
         public double ComplianceScore { get; set; }
         public DateTime GeneratedAt { get; set; }
     }

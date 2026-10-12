@@ -10,6 +10,7 @@ public interface IAccountService
     Task<List<AccountDto>> GetUserAccountsAsync(Guid userId);
     Task<AccountDto?> GetAccountByIdAsync(Guid accountId, Guid userId);
     Task<AccountDto?> CreateAccountAsync(Guid userId, CreateAccountRequest request);
+    Task<Guid?> GetAccountIdByNumberAsync(string accountNumber);
 }
 
 public class AccountService : IAccountService
@@ -24,7 +25,9 @@ public class AccountService : IAccountService
     public async Task<List<AccountDto>> GetUserAccountsAsync(Guid userId)
     {
         var accounts = await _context.Accounts
+            .AsNoTracking()
             .Where(a => a.UserId == userId)
+            .OrderBy(a => a.CreatedAt)
             .ToListAsync();
 
         return accounts.Select(MapToAccountDto).ToList();
@@ -33,6 +36,7 @@ public class AccountService : IAccountService
     public async Task<AccountDto?> GetAccountByIdAsync(Guid accountId, Guid userId)
     {
         var account = await _context.Accounts
+            .AsNoTracking()
             .FirstOrDefaultAsync(a => a.Id == accountId && a.UserId == userId);
 
         return account != null ? MapToAccountDto(account) : null;
@@ -52,8 +56,9 @@ public class AccountService : IAccountService
             AccountNumber = GenerateAccountNumber(),
             AccountType = accountType,
             Balance = 0,
-            Currency = request.Currency ?? "USD",
-            Status = AccountStatus.Active
+            Currency = (request.Currency ?? "USD").ToUpperInvariant(),
+            Status = AccountStatus.Active,
+            InterestRate = accountType == AccountType.Savings ? InterestService.DefaultAnnualRate : 0
         };
 
         _context.Accounts.Add(account);
@@ -62,9 +67,19 @@ public class AccountService : IAccountService
         return MapToAccountDto(account);
     }
 
+    public async Task<Guid?> GetAccountIdByNumberAsync(string accountNumber)
+    {
+        var number = accountNumber.Trim().ToUpperInvariant();
+        return await _context.Accounts
+            .AsNoTracking()
+            .Where(a => a.AccountNumber == number)
+            .Select(a => (Guid?)a.Id)
+            .FirstOrDefaultAsync();
+    }
+
     private static string GenerateAccountNumber()
     {
-        return Guid.NewGuid().ToString("N")[..20].ToUpper();
+        return Guid.NewGuid().ToString("N")[..20].ToUpperInvariant();
     }
 
     private static AccountDto MapToAccountDto(Account account)
@@ -77,6 +92,7 @@ public class AccountService : IAccountService
             Balance = account.Balance,
             Currency = account.Currency,
             Status = account.Status.ToString(),
+            InterestRate = account.InterestRate,
             CreatedAt = account.CreatedAt
         };
     }

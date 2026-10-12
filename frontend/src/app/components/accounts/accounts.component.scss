@@ -32,3 +32,22 @@
     color: #2e7d32;
   }
 }
+
+.new-account {
+  margin-bottom: 24px;
+}
+
+.new-account-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.clickable {
+  cursor: pointer;
+
+  &:hover {
+    background-color: #fafafa;
+  }
+}

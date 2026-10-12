@@ -30,6 +30,9 @@ public class Account
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>PostgreSQL xmin system column, used for optimistic concurrency on balance updates.</summary>
+    public uint Version { get; set; }
+
     // Navigation properties
     public User User { get; set; } = null!;
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();

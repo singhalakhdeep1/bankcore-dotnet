@@ -46,13 +46,13 @@ namespace BankCore.Services.Patterns
     /// </summary>
     public class TransactionContext
     {
-        public string AccountId { get; set; }
+        public string AccountId { get; set; } = string.Empty;
         public decimal Amount { get; set; }
-        public string Currency { get; set; }
+        public string Currency { get; set; } = string.Empty;
         public string? ReferenceNumber { get; set; }
         public string? Description { get; set; }
         public string? DestinationAccountId { get; set; }
-        public Dictionary<string, object> Metadata { get; set; }
+        public Dictionary<string, object> Metadata { get; set; } = new();
     }
 
     /// <summary>
@@ -133,7 +133,7 @@ namespace BankCore.Services.Patterns
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Deposit processing failed: {TransactionId}", ex);
+                _logger.LogError(ex, $"Deposit processing failed: {TransactionId}");
                 return false;
             }
         }
@@ -152,7 +152,7 @@ namespace BankCore.Services.Patterns
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Deposit reversal failed: {TransactionId}", ex);
+                _logger.LogError(ex, $"Deposit reversal failed: {TransactionId}");
                 return false;
             }
         }
@@ -207,7 +207,7 @@ namespace BankCore.Services.Patterns
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Withdrawal processing failed: {TransactionId}", ex);
+                _logger.LogError(ex, $"Withdrawal processing failed: {TransactionId}");
                 return false;
             }
         }
@@ -226,7 +226,7 @@ namespace BankCore.Services.Patterns
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Withdrawal reversal failed: {TransactionId}", ex);
+                _logger.LogError(ex, $"Withdrawal reversal failed: {TransactionId}");
                 return false;
             }
         }
@@ -291,7 +291,7 @@ namespace BankCore.Services.Patterns
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Transfer processing failed: {TransactionId}", ex);
+                _logger.LogError(ex, $"Transfer processing failed: {TransactionId}");
                 return false;
             }
         }
@@ -310,7 +310,7 @@ namespace BankCore.Services.Patterns
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Transfer reversal failed: {TransactionId}", ex);
+                _logger.LogError(ex, $"Transfer reversal failed: {TransactionId}");
                 return false;
             }
         }

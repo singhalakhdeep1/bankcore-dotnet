@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Distributed;
@@ -46,7 +47,7 @@ namespace BankCore.Services.Caching
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error getting from cache for key: {key}", ex);
+                _logger.LogError(ex, $"Error getting from cache for key: {key}");
                 return default;
             }
         }
@@ -71,7 +72,7 @@ namespace BankCore.Services.Caching
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error setting cache for key: {key}", ex);
+                _logger.LogError(ex, $"Error setting cache for key: {key}");
             }
         }
 
@@ -87,7 +88,7 @@ namespace BankCore.Services.Caching
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error removing cache for key: {key}", ex);
+                _logger.LogError(ex, $"Error removing cache for key: {key}");
             }
         }
 
@@ -103,7 +104,7 @@ namespace BankCore.Services.Caching
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error refreshing cache for key: {key}", ex);
+                _logger.LogError(ex, $"Error refreshing cache for key: {key}");
             }
         }
 
@@ -128,39 +129,36 @@ namespace BankCore.Services.Caching
         /// <summary>
         /// Invalidate cache by pattern
         /// </summary>
-        public async Task InvalidatePatternAsync(string pattern)
+        public Task InvalidatePatternAsync(string pattern)
         {
-            // Note: Redis pattern deletion would be implemented here
-            // For IDistributedCache, this would need Redis-specific implementation
-            _logger.LogInformation($"Invalidating cache pattern: {pattern}");
-            
-            // This would require Redis-specific implementation
-            // await _cache.RemoveByPatternAsync(pattern);
+            // Placeholder: IDistributedCache has no pattern removal; this needs a Redis-specific implementation.
+            _logger.LogInformation("Cache pattern invalidation requested (not implemented): {Pattern}", pattern);
+            return Task.CompletedTask;
         }
 
         /// <summary>
         /// Clear all cache
         /// </summary>
-        public async Task ClearAllAsync()
+        public Task ClearAllAsync()
         {
-            _logger.LogWarning("Clearing all cache");
-            // This would require Redis-specific implementation
-            // await _cache.FlushAllAsync();
+            // Placeholder: flushing needs a Redis-specific implementation.
+            _logger.LogWarning("Clear-all requested (not implemented)");
+            return Task.CompletedTask;
         }
 
         /// <summary>
         /// Get cache statistics
         /// </summary>
-        public async Task<CacheStatistics> GetStatisticsAsync()
+        public Task<CacheStatistics> GetStatisticsAsync()
         {
-            // This would require Redis-specific implementation
-            return new CacheStatistics
+            // Placeholder: real statistics need a Redis-specific implementation.
+            return Task.FromResult(new CacheStatistics
             {
                 TotalKeys = 0,
                 HitCount = 0,
                 MissCount = 0,
                 LastUpdated = DateTime.UtcNow
-            };
+            });
         }
     }
 

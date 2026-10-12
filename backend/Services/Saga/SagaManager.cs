@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using BankCore.Data;
+using BankingAPI.Data;
 
 namespace BankCore.Services.Saga
 {
@@ -59,13 +59,13 @@ namespace BankCore.Services.Saga
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError($"Step failed: {step.Name}", ex);
+                        _logger.LogError(ex, $"Step failed: {step.Name}");
                         execution.Status = SagaStatus.Compensating;
                         execution.FailedSteps.Add(step.Name);
                         execution.Error = ex.Message;
 
                         // Compensate all completed steps in reverse order
-                        await CompensateAsync(saga, context, i);
+                        await CompensateAsync(saga, context, execution, i);
                         
                         execution.Status = SagaStatus.Failed;
                         execution.CompletedAt = DateTime.UtcNow;
@@ -93,7 +93,7 @@ namespace BankCore.Services.Saga
         /// <summary>
         /// Compensate completed steps in reverse order
         /// </summary>
-        private async Task CompensateAsync<T>(SagaDefinition<T> saga, T context, int failedStepIndex)
+        private async Task CompensateAsync<T>(SagaDefinition<T> saga, T context, SagaExecution<T> execution, int failedStepIndex)
         {
             _logger.LogInformation("Starting compensation...");
 
@@ -110,7 +110,7 @@ namespace BankCore.Services.Saga
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError($"Compensation failed for step: {step.Name}", ex);
+                        _logger.LogError(ex, "Compensation failed for step: {StepName}", step.Name);
                         // Continue with other compensations even if one fails
                     }
                 }
@@ -131,7 +131,7 @@ namespace BankCore.Services.Saga
     /// </summary>
     public class SagaDefinition<T>
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
         public List<SagaStep<T>> Steps { get; set; } = new();
     }
 
@@ -140,8 +140,8 @@ namespace BankCore.Services.Saga
     /// </summary>
     public class SagaStep<T>
     {
-        public string Name { get; set; }
-        public Func<T, Task<T>> Execute { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public Func<T, Task<T>> Execute { get; set; } = default!;
         public Func<T, Task>? Compensate { get; set; }
         public bool Retryable { get; set; } = true;
         public int MaxRetries { get; set; } = 3;
@@ -152,8 +152,8 @@ namespace BankCore.Services.Saga
     /// </summary>
     public class SagaExecution
     {
-        public string Id { get; set; }
-        public string SagaName { get; set; }
+        public string Id { get; set; } = string.Empty;
+        public string SagaName { get; set; } = string.Empty;
         public SagaStatus Status { get; set; }
         public DateTime StartedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
@@ -163,9 +163,9 @@ namespace BankCore.Services.Saga
 
     public class SagaExecution<T> : SagaExecution
     {
-        public T Context { get; set; }
-        public List<string> CompletedSteps { get; set; }
-        public List<string> FailedSteps { get; set; }
+        public T Context { get; set; } = default!;
+        public List<string> CompletedSteps { get; set; } = new();
+        public List<string> FailedSteps { get; set; } = new();
     }
 
     public enum SagaStatus

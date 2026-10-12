@@ -10,6 +10,9 @@ public interface IJwtService
     string GenerateAccessToken(Guid userId, string email, string role);
     string GenerateRefreshToken(Guid userId);
     ClaimsPrincipal? ValidateToken(string token);
+
+    /// <summary>Returns the user id if <paramref name="token"/> is a valid, unexpired refresh token; otherwise null.</summary>
+    Guid? ValidateRefreshToken(string token);
 }
 
 public class JwtService : IJwtService
@@ -71,6 +74,20 @@ public class JwtService : IJwtService
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public Guid? ValidateRefreshToken(string token)
+    {
+        var principal = ValidateToken(token);
+        if (principal == null) return null;
+
+        // Access tokens are signed with the same key, so insist on the refresh marker.
+        var tokenType = principal.FindFirst("token_type")?.Value;
+        if (tokenType != "refresh") return null;
+
+        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                  ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(sub, out var userId) ? userId : null;
     }
 
     public ClaimsPrincipal? ValidateToken(string token)

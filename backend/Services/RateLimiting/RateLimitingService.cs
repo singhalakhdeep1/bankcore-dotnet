@@ -34,7 +34,7 @@ namespace BankCore.Services.RateLimiting
         /// <summary>
         /// Check if request is allowed
         /// </summary>
-        public async Task<bool> IsAllowedAsync(string key, int tokensRequested = 1)
+        public Task<bool> IsAllowedAsync(string key, int tokensRequested = 1)
         {
             var bucket = GetOrCreateBucket(key);
             
@@ -55,12 +55,12 @@ namespace BankCore.Services.RateLimiting
                     bucket.LastRequestTime = now;
                     
                     _logger.LogDebug($"Request allowed for key: {key} (Tokens remaining: {bucket.Tokens})");
-                    return true;
+                    return Task.FromResult(true);
                 }
                 else
                 {
                     _logger.LogWarning($"Request rate limited for key: {key} (Tokens needed: {tokensRequested}, Available: {bucket.Tokens})");
-                    return false;
+                    return Task.FromResult(false);
                 }
             }
         }

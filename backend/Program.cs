@@ -1,6 +1,9 @@
+using System.Text;
+using System.Threading.RateLimiting;
 using BankingAPI.Data;
-using BankingAPI.Services;
 using BankingAPI.Middleware;
+using BankingAPI.Services;
+using BankingAPI.Services.Hosting;
 using BankCore.Services.Saga;
 using BankCore.Services.Sharding;
 using BankCore.Services.ReadReplica;
@@ -16,72 +19,145 @@ using BankCore.Services.ErrorHandling;
 using BankCore.Services.Patterns;
 using BankCore.Services.CapacityEstimation;
 using BankCore.Services.SystemConstraints;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
+using Microsoft.OpenApi.Models;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Serilog
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger();
+builder.Host.UseSerilog((context, services, logger) => logger
+    .ReadFrom.Configuration(context.Configuration)
+    .Enrich.FromLogContext()
+    .WriteTo.Console());
 
-builder.Host.UseSerilog();
-
-// Add services to the container
+// ---------------------------------------------------------------- MVC + Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo { Title = "BankCore API", Version = "v1" });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT access token. Paste the token only; the 'Bearer ' prefix is added for you.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } },
+            Array.Empty<string>()
+        }
+    });
+});
 
-// Database
+// ---------------------------------------------------------------- Database
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Redis
-builder.Services.AddStackExchangeRedisCache(options =>
-{
-    options.Configuration = builder.Configuration.GetConnectionString("Redis");
-});
+builder.Services.AddHealthChecks().AddDbContextCheck<ApplicationDbContext>("database");
 
-// JWT Authentication
-var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("JWT Secret not configured");
+// ---------------------------------------------------------------- Cache (Redis, or in-memory when no Redis is configured)
+var redisConnection = builder.Configuration.GetConnectionString("Redis");
+if (string.IsNullOrWhiteSpace(redisConnection))
+{
+    builder.Services.AddDistributedMemoryCache();
+}
+else
+{
+    builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redisConnection);
+}
+
+// ---------------------------------------------------------------- JWT authentication
+var jwtSecret = builder.Configuration["Jwt:Secret"];
+if (string.IsNullOrWhiteSpace(jwtSecret) || Encoding.UTF8.GetByteCount(jwtSecret) < 32)
+{
+    throw new InvalidOperationException("Jwt:Secret must be configured and at least 32 bytes long.");
+}
+
+if (!builder.Environment.IsDevelopment() && jwtSecret.StartsWith("DEV-ONLY", StringComparison.Ordinal))
+{
+    throw new InvalidOperationException(
+        "Refusing to start outside Development with the built-in development JWT secret. Set Jwt__Secret.");
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // Keep claim names exactly as issued ("sub", and the long role URI) instead of remapping them.
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            NameClaimType = "sub",
+            RoleClaimType = System.Security.Claims.ClaimTypes.Role
         };
     });
+builder.Services.AddAuthorization();
 
-// CORS
+// ---------------------------------------------------------------- CORS
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+                     ?? new[] { "http://localhost:4200" };
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAngular",
-        policy => policy
-            .WithOrigins("http://localhost:4200")
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials());
+    options.AddPolicy("AllowAngular", policy => policy
+        .WithOrigins(allowedOrigins)
+        .AllowAnyMethod()
+        .AllowAnyHeader());
 });
 
-// Register Services
+// ---------------------------------------------------------------- Rate limiting for login / register / refresh
+var authPermitLimit = builder.Configuration.GetValue("AuthRateLimit:PermitLimit", 10);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+        httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = authPermitLimit,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+});
+
+// The API sits behind the nginx container in Docker, so trust X-Forwarded-* for the real client IP.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// ---------------------------------------------------------------- Application services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
+builder.Services.AddScoped<ILedgerService, LedgerService>();
+builder.Services.AddScoped<IComplianceService, ComplianceService>();
+builder.Services.AddScoped<IPaymentGatewayService, PaymentGatewayService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IInterestService, InterestService>();
 
-// HLD/LLD Pattern Services
+builder.Services.AddHostedService<DatabaseMigrationService>();
+builder.Services.AddHostedService<InterestAccrualWorker>();
+
+// ---------------------------------------------------------------- Architecture pattern library
+// Reference implementations of common system-design patterns (see README). They are registered
+// so they can be injected, but the core banking request path does not depend on them.
 builder.Services.AddSingleton<SagaManager>();
 builder.Services.AddSingleton<DatabaseShardingService>();
 builder.Services.AddSingleton<ReadReplicaService>();
@@ -102,7 +178,6 @@ builder.Services.AddSingleton<ITransactionFactory, TransactionFactory>();
 builder.Services.AddSingleton<CapacityEstimationService>();
 builder.Services.AddSingleton<SystemConstraintsAnalysisService>();
 
-// Configure Options
 builder.Services.Configure<ShardingOptions>(builder.Configuration.GetSection("Sharding"));
 builder.Services.Configure<ReadReplicaOptions>(builder.Configuration.GetSection("ReadReplica"));
 builder.Services.Configure<CacheOptions>(builder.Configuration.GetSection("Cache"));
@@ -117,7 +192,9 @@ builder.Services.Configure<BankingComplianceOptions>(builder.Configuration.GetSe
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
+app.UseForwardedHeaders();
+app.UseSerilogRequestLogging();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -125,15 +202,15 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ErrorHandlingMiddleware>();
-
 app.UseCors("AllowAngular");
-
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// Health check
+// Liveness: the process is up. Readiness: the database answers.
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+app.MapHealthChecks("/health/ready");
 
 app.Run();

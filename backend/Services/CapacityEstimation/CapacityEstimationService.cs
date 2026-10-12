@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 
@@ -83,7 +84,7 @@ namespace BankCore.Services.CapacityEstimation
             // CPU requirements
             var cpuCoresPerTPS = 0.1; // 0.1 cores per TPS
             var totalCPUCores = (int)(peakTPS * cpuCoresPerTPS);
-            var serverCount = (int)Math.Ceiling(totalCPUCores / _options.CoresPerServer);
+            var serverCount = (int)Math.Ceiling((double)totalCPUCores / _options.CoresPerServer);
 
             // Memory requirements
             var memoryPerServerGB = _options.MemoryPerServerGB;
@@ -270,7 +271,7 @@ namespace BankCore.Services.CapacityEstimation
         public int TotalMemoryGB { get; set; }
         public int MemoryPerServerGB { get; set; }
         public double BandwidthMbps { get; set; }
-        public string RecommendedInstanceType { get; set; }
+        public string RecommendedInstanceType { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -293,12 +294,12 @@ namespace BankCore.Services.CapacityEstimation
     /// </summary>
     public class CapacityReport
     {
-        public TransactionVolume TransactionVolume { get; set; }
-        public DatabaseCapacity DatabaseCapacity { get; set; }
-        public ApplicationCapacity ApplicationCapacity { get; set; }
-        public CacheCapacity CacheCapacity { get; set; }
+        public TransactionVolume TransactionVolume { get; set; } = new();
+        public DatabaseCapacity DatabaseCapacity { get; set; } = new();
+        public ApplicationCapacity ApplicationCapacity { get; set; } = new();
+        public CacheCapacity CacheCapacity { get; set; } = new();
         public DateTime GeneratedAt { get; set; }
-        public List<string> Recommendations { get; set; }
+        public List<string> Recommendations { get; set; } = new();
     }
 
     /// <summary>

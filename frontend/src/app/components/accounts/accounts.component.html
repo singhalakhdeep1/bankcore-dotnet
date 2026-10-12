@@ -1,11 +1,35 @@
 <div class="accounts-container">
   <div class="header">
     <h1>My Accounts</h1>
-    <button mat-raised-button color="primary" (click)="createAccount()">
-      <mat-icon>add</mat-icon>
-      New Account
+    <button mat-raised-button color="primary" (click)="showForm = !showForm">
+      <mat-icon>{{ showForm ? 'close' : 'add' }}</mat-icon>
+      {{ showForm ? 'Cancel' : 'New Account' }}
     </button>
   </div>
+
+  <mat-card *ngIf="showForm" class="new-account">
+    <mat-card-content>
+      <form [formGroup]="form" (ngSubmit)="createAccount()" class="new-account-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Account type</mat-label>
+          <mat-select formControlName="accountType">
+            <mat-option *ngFor="let type of accountTypes" [value]="type">{{ type }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Currency</mat-label>
+          <mat-select formControlName="currency">
+            <mat-option *ngFor="let currency of currencies" [value]="currency">{{ currency }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <button mat-raised-button color="primary" type="submit" [disabled]="form.invalid || creating">
+          Open account
+        </button>
+      </form>
+    </mat-card-content>
+  </mat-card>
 
   <mat-spinner *ngIf="loading" class="loading-spinner"></mat-spinner>
 
@@ -30,7 +54,7 @@
       <ng-container matColumnDef="balance">
         <th mat-header-cell *matHeaderCellDef>Balance</th>
         <td mat-cell *matCellDef="let account">
-          {{ account.balance | currency }}
+          {{ account.balance | currency: account.currency }}
         </td>
       </ng-container>
 
@@ -52,7 +76,7 @@
       </ng-container>
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-      <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns" class="clickable" (click)="open(row)"></tr>
     </table>
   </mat-card>
 </div>
